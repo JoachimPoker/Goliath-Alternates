@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Goliath Display</title>
+  <link rel="stylesheet" href="main.css">
+</head>
+<body>
+
+  <div class="ticker-wrap">
+    <div class="ticker-content" id="tickerText"></div>
+  </div>
+
+  <div class="split-screen">
+    <div class="col-map">
+      <div class="map-frame">
+        <img src="map.jpg" class="map-img" alt="Floor Map">
+        <div id="mapPointer" class="map-pointer"></div>
+      </div>
+      <div class="qr-section">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://YOUR-SITE.web.app" class="qr-img">
+        <p style="margin: 0.5vh 0 0 0; font-size: 1.5vh;">SCAN FOR ALERTS</p>
+      </div>
+    </div>
+
+    <div class="col-list">
+      <div class="header-gold">ALTERNATE LIST</div>
+      <div id="tvList" style="width: 100%;"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-config.js"></script>
+  <script>
+    // 1. Load Tournaments
+    async function loadTV() {
+      const { data } = await _supabase.from('tournaments').select('*').eq('is_active', true).order('created_at');
+      const container = document.getElementById('tvList');
+      if (!data || data.length === 0) {
+        container.innerHTML = '<div class="tourn-title" style="color:#555">NO ACTIVE EVENTS</div>';
+      } else {
+        container.innerHTML = data.map(t => {
+          let statusHtml = t.is_alternate_active 
+            ? (t.current_alt_number == 0 ? "ALL ALTERNATES" : `ALTS UP TO <span style="color:white">#${t.current_alt_number}</span>`) 
+            : "ALL ALTERNATES";
+          return `
+          <div class="tourn-item">
+            <div class="tourn-title">${t.name}</div>
+            <div class="tourn-info">${t.start_time} // ${t.location}</div>
+            <div class="tourn-status">${statusHtml}</div>
+          </div>`;
+        }).join('');
+      }
+    }
+
+    // 2. Load Ticker Messages
+// public/display.html
+
+async function loadTicker() {
+  const { data } = await _supabase.from('messages').select('*').eq('show_on_display', true).order('created_at');
+  const tickerBox = document.getElementById('tickerText');
+  const wrap = document.querySelector('.ticker-wrap');
+  const split = document.querySelector('.split-screen');
+  
+  if (!data || data.length === 0) {
+    wrap.style.display = 'none';
+    split.style.marginTop = '0';
+    split.style.height = '100vh';
+  } else {
+    wrap.style.display = 'flex';
+    split.style.marginTop = '6vh';
+    split.style.height = '94vh';
+    
+    const baseString = data.map(m => m.text).join(' &nbsp;&nbsp;&nbsp;***&nbsp;&nbsp;&nbsp; ');
+    const repeatedString = Array(20).fill(baseString).join(' &nbsp;&nbsp;&nbsp;***&nbsp;&nbsp;&nbsp; ');
+
+    tickerBox.innerHTML = `<div class="ticker-item">${repeatedString}</div>`;
+    
+    // --- SPEED FIX ---
+    const pixelsPerSecond = 100; // Same speed as homepage
+    const totalWidth = tickerBox.scrollWidth;
+    const duration = totalWidth / pixelsPerSecond;
+    tickerBox.style.animationDuration = `${duration}s`;
+  }
+}
+
+    _supabase.channel('public').on('postgres_changes', {event:'*', schema:'public'}, () => {
+      loadTV();
+      loadTicker();
+    }).subscribe();
+
+    loadTV();
+    loadTicker();
+  </script>
+</body>
+</html>
