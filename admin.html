@@ -191,35 +191,42 @@
     // --- ACTIONS ---
     
     // Explicitly attached to window to ensure HTML buttons find it
-    window.updateNum = async function(id) {
-      console.log("Updating ID:", id); // Debug log
+   window.updateNum = async function(id) {
+      console.log("Updating ID:", id);
       const val = document.getElementById(`input-${id}`).value;
       
+      // We ask Supabase to return the rows it actually changed (.select())
       const { data, error } = await _supabase
         .from('tournaments')
         .update({ current_alt_number: val })
         .eq('id', id)
         .select();
 
+      // 1. Check for Crashes
       if (error) {
-        alert("UPDATE FAILED:\n" + error.message);
+        alert("CRITICAL ERROR:\n" + error.message);
         console.error(error);
-      } else {
-        console.log("Update Success:", data);
-        // Optional: Visual feedback button flash
-        const btn = document.activeElement;
-        if(btn) {
-           const original = btn.innerText;
-           btn.innerText = "✓";
-           btn.classList.replace('btn-primary', 'btn-success');
-           setTimeout(() => {
-             btn.innerText = original;
-             btn.classList.replace('btn-success', 'btn-primary');
-           }, 1000);
-        }
+        return;
+      }
+
+      // 2. Check for "Ghost Update" (Success but 0 rows changed)
+      if (!data || data.length === 0) {
+        alert("⚠️ UPDATE IGNORED ⚠️\n\nThe database said 'Success' but didn't save the number.\nThis means your RLS Policies are blocking the write.\n\nDid you run the SQL code in Step 1?");
+        return;
+      }
+
+      // 3. Success Visual
+      const btn = document.activeElement;
+      if(btn) {
+         const original = btn.innerText;
+         btn.innerText = "✓ SAVED";
+         btn.classList.replace('btn-primary', 'btn-success');
+         setTimeout(() => {
+           btn.innerText = original;
+           btn.classList.replace('btn-success', 'btn-primary');
+         }, 1500);
       }
     }
-
     window.adjustNum = function(id, diff) { 
       const el = document.getElementById(`input-${id}`);
       let val = Math.max(0, parseInt(el.value || 0) + diff);
