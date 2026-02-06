@@ -85,15 +85,27 @@
     if ("Notification" in window) Notification.requestPermission();
 
     async function loadHome() {
-      const { data } = await _supabase.from('tournaments').select('*').eq('is_active', true).order('created_at');
+      // DEBUG: Ask for both data AND error
+      const { data, error } = await _supabase
+        .from('tournaments')
+        .select('*')
+        .eq('is_active', true)
+        .order('created_at');
+
+      // 1. ERROR CHECK
+      if (error) {
+        alert("PHONE ERROR: " + error.message); // This tells us exactly what's wrong
+        return;
+      }
+
       const list = document.getElementById('tournamentList');
 
-      // --- CHECK FOR EMPTY LIST ---
+      // 2. EMPTY CHECK
       if (!data || data.length === 0) {
         list.innerHTML = `
           <div class="text-center py-5 text-secondary">
             <h3 class="fw-bold" style="opacity:0.5;">NO ACTIVE EVENTS</h3>
-            <p>Please check back later.</p>
+            <p>If you see this but events exist, check Database RLS Policies.</p>
           </div>
         `;
         return;
