@@ -7,8 +7,8 @@
   <style>
     .badge-icon { font-size: 0.8rem; opacity: 0.5; margin-left: 5px; }
     .badge-active { opacity: 1; }
-    /* Hide dashboard by default until logged in */
-    #dashboardSection { display: none; }
+    /* Hide sections by default */
+    #dashboardSection, #loginSection { display: none; }
     #loginSection { max-width: 400px; margin: 100px auto; }
   </style>
 </head>
@@ -96,38 +96,54 @@
 
     // --- AUTHENTICATION LOGIC ---
     async function checkUser() {
+      // 1. Check active session
       const { data: { session } } = await _supabase.auth.getSession();
+      
       if (session) {
+        // Logged in
+        console.log("User Logged In:", session.user.email);
         document.getElementById('loginSection').style.display = 'none';
         document.getElementById('dashboardSection').style.display = 'block';
         refreshAdmin();
       } else {
+        // Not logged in
+        console.log("No User Session Found");
         document.getElementById('loginSection').style.display = 'block';
         document.getElementById('dashboardSection').style.display = 'none';
       }
+
+      // 2. Listen for auth changes (Handle logout/refresh dynamically)
+      _supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_OUT') {
+           window.location.reload();
+        }
+      });
     }
 
     async function login() {
       const email = document.getElementById('email').value;
       const pass = document.getElementById('password').value;
       const { error } = await _supabase.auth.signInWithPassword({ email: email, password: pass });
-      if (error) document.getElementById('loginError').innerText = error.message;
-      else checkUser();
+      
+      if (error) {
+        document.getElementById('loginError').innerText = error.message;
+      } else {
+        // Reload to trigger checkUser clean state
+        window.location.reload(); 
+      }
     }
 
     async function logout() {
       await _supabase.auth.signOut();
-      checkUser();
+      window.location.reload();
     }
 
     // --- ADMIN LOGIC ---
     async function refreshAdmin() {
-      // 1. Load Tournaments
       const { data: tours, error } = await _supabase.from('tournaments').select('*').order('created_at');
-      if (error) return console.error(error);
+      if (error) return console.error("Load Error:", error);
 
       document.getElementById('tournAdminList').innerHTML = (tours || []).map(t => {
-        // Opacity for ended tournaments
         const opacity = t.is_active ? '1' : '0.6';
         const activeBadge = t.is_active ? '<span class="badge bg-success">LIVE</span>' : '<span class="badge bg-secondary">ENDED</span>';
         
@@ -158,7 +174,7 @@
         </div>
       `}).join('');
 
-      // 2. Load Messages
+      // Load Messages
       const { data: msgs } = await _supabase.from('messages').select('*').order('created_at');
       document.getElementById('msgList').innerHTML = (msgs || []).map(m => `
         <li class="list-group-item d-flex justify-content-between align-items-center">
@@ -172,22 +188,45 @@
       `).join('');
     }
 
-    // --- UPDATED ACTIONS WITH ERROR CHECKING ---
-    async function updateNum(id) {
+    // --- ACTIONS ---
+    
+    // Explicitly attached to window to ensure HTML buttons find it
+    window.updateNum = async function(id) {
+      console.log("Updating ID:", id); // Debug log
       const val = document.getElementById(`input-${id}`).value;
-      const { error } = await _supabase.from('tournaments').update({ current_alt_number: val }).eq('id', id);
-      if (error) alert("Update Failed: " + error.message);
-      // No need to refresh entire list, keeps UI snappy
+      
+      const { data, error } = await _supabase
+        .from('tournaments')
+        .update({ current_alt_number: val })
+        .eq('id', id)
+        .select();
+
+      if (error) {
+        alert("UPDATE FAILED:\n" + error.message);
+        console.error(error);
+      } else {
+        console.log("Update Success:", data);
+        // Optional: Visual feedback button flash
+        const btn = document.activeElement;
+        if(btn) {
+           const original = btn.innerText;
+           btn.innerText = "✓";
+           btn.classList.replace('btn-primary', 'btn-success');
+           setTimeout(() => {
+             btn.innerText = original;
+             btn.classList.replace('btn-success', 'btn-primary');
+           }, 1000);
+        }
+      }
     }
 
-    async function adjustNum(id, diff) { 
+    window.adjustNum = function(id, diff) { 
       const el = document.getElementById(`input-${id}`);
       let val = Math.max(0, parseInt(el.value || 0) + diff);
       el.value = val;
-      // We don't save immediately on +/-, user must click SET to save (prevents database spam)
     }
 
-    async function addTourn() {
+    window.addTourn = async function() {
       const { error } = await _supabase.from('tournaments').insert([{
         name: document.getElementById('newName').value,
         start_time: document.getElementById('newTime').value,
@@ -198,13 +237,13 @@
       else refreshAdmin();
     }
     
-    // ... Other functions remain similar ...
-    function openEdit(id, n, t, l) {
+    window.openEdit = function(id, n, t, l) {
       document.getElementById('editId').value = id; document.getElementById('editName').value = n;
       document.getElementById('editTime').value = t; document.getElementById('editLoc').value = l;
       editModal.show();
     }
-    async function saveEdit() {
+    
+    window.saveEdit = async function() {
       await _supabase.from('tournaments').update({
         name: document.getElementById('editName').value,
         start_time: document.getElementById('editTime').value,
@@ -213,20 +252,20 @@
       editModal.hide(); refreshAdmin();
     }
 
-    async function toggleAlt(id, val) { 
+    window.toggleAlt = async function(id, val) { 
       const { error } = await _supabase.from('tournaments').update({ is_alternate_active: val }).eq('id', id); 
       if(error) alert(error.message);
       refreshAdmin(); 
     }
     
-    async function endTourn(id) { 
+    window.endTourn = async function(id) { 
       if(confirm("End Tournament?")) {
         await _supabase.from('tournaments').update({ is_active: false }).eq('id', id); 
         refreshAdmin(); 
       }
     }
 
-    async function addMsg() {
+    window.addMsg = async function() {
       const txt = document.getElementById('newMsg').value;
       if(!txt) return;
       const { error } = await _supabase.from('messages').insert([{ 
@@ -241,12 +280,12 @@
       }
     }
 
-    async function delMsg(id) {
+    window.delMsg = async function(id) {
       await _supabase.from('messages').delete().eq('id', id);
       refreshAdmin();
     }
 
-    // Start
+    // Start App
     checkUser();
   </script>
 </body>
