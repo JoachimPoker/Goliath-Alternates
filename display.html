@@ -36,21 +36,27 @@
     async function loadTV() {
       const { data } = await _supabase.from('tournaments').select('*').eq('is_active', true).order('created_at');
       const container = document.getElementById('tvList');
+      
       if (!data || data.length === 0) {
         container.innerHTML = '<div class="tourn-title" style="color:#555">NO ACTIVE EVENTS</div>';
-      } else {
-        container.innerHTML = data.map(t => {
-          let statusHtml = t.is_alternate_active 
-            ? (t.current_alt_number == 0 ? "ALL ALTERNATES" : `ALTS UP TO <span style="color:white">#${t.current_alt_number}</span>`) 
-            : "ALL ALTERNATES";
-          return `
-          <div class="tourn-item">
-            <div class="tourn-title">${t.name}</div>
-            <div class="tourn-info">${t.start_time} // ${t.location}</div>
-            <div class="tourn-status">${statusHtml}</div>
-          </div>`;
-        }).join('');
+        return;
       }
+
+      container.innerHTML = data.map(t => {
+        let statusHtml = "";
+        
+        if (t.status_mode === 'OPEN') statusHtml = `<span class="text-success">IMMEDIATE SEATING</span>`;
+        else if (t.status_mode === 'ALL') statusHtml = `<span class="text-danger">ALL ALTERNATES</span>`;
+        else if (t.status_mode === 'BREAK') statusHtml = `<span class="text-info">AFTER BREAK: #${t.current_alt_number}</span>`;
+        else statusHtml = `ALTS UP TO <span class="text-warning">#${t.current_alt_number}</span>`;
+
+        return `
+        <div class="tourn-item">
+          <div class="tourn-title">${t.name}</div>
+          <div class="tourn-info">${t.start_time} // ${t.location || 'TBD'}</div>
+          <div class="tourn-status">${statusHtml}</div>
+        </div>`;
+      }).join('');
     }
 
     // 2. Load Ticker Messages

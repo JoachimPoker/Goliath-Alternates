@@ -7,9 +7,14 @@
   <style>
     .badge-icon { font-size: 0.8rem; opacity: 0.5; margin-left: 5px; }
     .badge-active { opacity: 1; }
-    /* Hide sections by default */
     #dashboardSection, #loginSection { display: none; }
     #loginSection { max-width: 400px; margin: 100px auto; }
+    .status-select { font-weight: bold; border: 2px solid #aaa; }
+    
+    /* Message Toggle Styles */
+    .msg-toggle { cursor: pointer; opacity: 0.3; transition: 0.2s; font-size: 1.2rem; margin: 0 2px; }
+    .msg-toggle.active { opacity: 1; transform: scale(1.1); }
+    .msg-toggle:hover { opacity: 0.7; }
   </style>
 </head>
 <body class="bg-light">
@@ -35,23 +40,30 @@
 
     <div class="row">
       <div class="col-lg-7">
-        <h4 class="mb-3">Live Tournaments</h4>
-        <div class="card p-3 mb-4 shadow-sm border-0 bg-white">
+        <h4 class="mb-3 text-success">🟢 Live Events</h4>
+        <div id="liveList" class="row g-3 mb-5"></div>
+
+        <h4 class="mb-3 text-secondary">📅 Event Calendar</h4>
+        <div class="card p-3 mb-3 shadow-sm border-0 bg-white">
+          <h6>Add to Schedule</h6>
+          <div class="input-group mb-2">
+            <input id="newDate" type="date" class="form-control" style="max-width: 140px;">
+            <input id="newName" class="form-control" placeholder="Event Name">
+          </div>
           <div class="input-group">
-            <input id="newName" class="form-control" placeholder="New Event Name">
-            <input id="newTime" class="form-control" placeholder="Time" style="max-width: 80px;">
-            <input id="newLoc" class="form-control" placeholder="Loc" style="max-width: 80px;">
-            <button onclick="addTourn()" class="btn btn-success">Create</button>
+            <input id="newTime" class="form-control" placeholder="Time (12:00)">
+            <input id="newLoc" class="form-control" placeholder="Loc (TBD)">
+            <button onclick="addToSchedule()" class="btn btn-secondary">Add to Calendar</button>
           </div>
         </div>
-        <div id="tournAdminList" class="row g-3"></div>
+        <div id="upcomingList" class="list-group shadow-sm"></div>
       </div>
 
       <div class="col-lg-5">
         <h4 class="mb-3">Ticker Messages</h4>
         <div class="card p-3 shadow-sm border-0 bg-white">
           <div class="mb-2">
-            <input id="newMsg" class="form-control" placeholder="Message (e.g. ID REQUIRED)">
+            <input id="newMsg" class="form-control" placeholder="Message">
           </div>
           <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
@@ -66,7 +78,6 @@
             </div>
             <button onclick="addMsg()" class="btn btn-primary btn-sm px-4">ADD</button>
           </div>
-          
           <ul id="msgList" class="list-group list-group-flush small"></ul>
         </div>
       </div>
@@ -76,12 +87,33 @@
   <div class="modal fade" id="editModal" tabindex="-1">
     <div class="modal-dialog">
       <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Edit Event</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
         <div class="modal-body">
           <input type="hidden" id="editId">
-          <label>Name</label><input id="editName" class="form-control mb-2">
-          <label>Time</label><input id="editTime" class="form-control mb-2">
-          <label>Location</label><input id="editLoc" class="form-control mb-2">
-          <button onclick="saveEdit()" class="btn btn-primary w-100">Save</button>
+          <div class="mb-2"><label>Event Name</label><input id="editName" class="form-control"></div>
+          <div class="mb-2"><label>Start Time</label><input id="editTime" class="form-control"></div>
+          <div class="mb-2"><label>Location</label><input id="editLoc" class="form-control"></div>
+          <div class="mb-2"><label>Date</label><input id="editDate" type="date" class="form-control"></div>
+          <button onclick="saveEdit()" class="btn btn-primary w-100 mt-3">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="msgEditModal" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Edit Message</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="msgEditId">
+          <textarea id="msgEditText" class="form-control mb-3" rows="3"></textarea>
+          <button onclick="saveMsgEdit()" class="btn btn-primary w-100">Update Message</button>
         </div>
       </div>
     </div>
@@ -93,206 +125,185 @@
   
   <script>
     const editModal = new bootstrap.Modal(document.getElementById('editModal'));
+    const msgEditModal = new bootstrap.Modal(document.getElementById('msgEditModal'));
 
-    // --- AUTHENTICATION LOGIC ---
+    // --- AUTH ---
     async function checkUser() {
-      // 1. Check active session
       const { data: { session } } = await _supabase.auth.getSession();
-      
       if (session) {
-        // Logged in
-        console.log("User Logged In:", session.user.email);
         document.getElementById('loginSection').style.display = 'none';
         document.getElementById('dashboardSection').style.display = 'block';
         refreshAdmin();
       } else {
-        // Not logged in
-        console.log("No User Session Found");
         document.getElementById('loginSection').style.display = 'block';
         document.getElementById('dashboardSection').style.display = 'none';
       }
-
-      // 2. Listen for auth changes (Handle logout/refresh dynamically)
-      _supabase.auth.onAuthStateChange((event, session) => {
-        if (event === 'SIGNED_OUT') {
-           window.location.reload();
-        }
-      });
     }
-
-    async function login() {
+    window.login = async () => {
       const email = document.getElementById('email').value;
       const pass = document.getElementById('password').value;
       const { error } = await _supabase.auth.signInWithPassword({ email: email, password: pass });
-      
-      if (error) {
-        document.getElementById('loginError').innerText = error.message;
-      } else {
-        // Reload to trigger checkUser clean state
-        window.location.reload(); 
-      }
+      if (error) document.getElementById('loginError').innerText = error.message;
+      else location.reload();
     }
+    window.logout = async () => { await _supabase.auth.signOut(); location.reload(); }
 
-    async function logout() {
-      await _supabase.auth.signOut();
-      window.location.reload();
-    }
-
-    // --- ADMIN LOGIC ---
+    // --- RENDER ---
     async function refreshAdmin() {
-      const { data: tours, error } = await _supabase.from('tournaments').select('*').order('created_at');
-      if (error) return console.error("Load Error:", error);
+      const { data: tours } = await _supabase.from('tournaments').select('*').order('tournament_date', {ascending: true}).order('start_time', {ascending: true});
+      const msgs = await _supabase.from('messages').select('*').order('created_at');
 
-      document.getElementById('tournAdminList').innerHTML = (tours || []).map(t => {
-        const opacity = t.is_active ? '1' : '0.6';
-        const activeBadge = t.is_active ? '<span class="badge bg-success">LIVE</span>' : '<span class="badge bg-secondary">ENDED</span>';
+      const liveDiv = document.getElementById('liveList');
+      const upcomingDiv = document.getElementById('upcomingList');
+      liveDiv.innerHTML = '';
+      upcomingDiv.innerHTML = '';
+
+      // RENDER TOURNAMENTS
+      (tours || []).forEach(t => {
+        const safeName = t.name.replace(/'/g, "&apos;");
+        const safeLoc = (t.location || '').replace(/'/g, "&apos;");
         
-        return `
-        <div class="col-12" style="opacity: ${opacity}">
-          <div class="card p-3 border shadow-sm">
-            <div class="d-flex justify-content-between align-items-center">
-              <div>${activeBadge} <strong>${t.name}</strong></div>
-              <div>
-                <button class="btn btn-sm btn-outline-secondary" onclick="openEdit('${t.id}', '${t.name}', '${t.start_time}', '${t.location}')">Edit</button>
-                ${t.is_active ? `<button class="btn btn-sm btn-outline-danger" onclick="endTourn('${t.id}')">End</button>` : ''}
+        if (t.is_active) {
+          const showNum = (t.status_mode === 'BATCH' || t.status_mode === 'BREAK');
+          liveDiv.innerHTML += `
+          <div class="col-12">
+            <div class="card p-3 border shadow-sm border-success" style="border-width:2px;">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <div>
+                   <h5 class="mb-0 fw-bold">${t.name}</h5>
+                   <small class="text-muted">${t.start_time} @ ${t.location || 'TBD'}</small>
+                </div>
+                <div>
+                  <button class="btn btn-sm btn-outline-secondary" onclick="openEdit('${t.id}', '${safeName}', '${t.start_time}', '${safeLoc}', '${t.tournament_date}')">Edit</button>
+                  <button class="btn btn-sm btn-outline-danger" onclick="toggleActive('${t.id}', false)">End Event</button>
+                </div>
+              </div>
+              <div class="row g-2 align-items-center mt-2">
+                <div class="col-6">
+                  <select class="form-select status-select" onchange="updateStatusMode('${t.id}', this.value)">
+                    <option value="OPEN" ${t.status_mode === 'OPEN' ? 'selected' : ''}>🟢 Immediate Seating</option>
+                    <option value="ALL" ${t.status_mode === 'ALL' ? 'selected' : ''}>🔴 All Alternates</option>
+                    <option value="BATCH" ${t.status_mode === 'BATCH' ? 'selected' : ''}>🟡 Alts Up To X</option>
+                    <option value="BREAK" ${t.status_mode === 'BREAK' ? 'selected' : ''}>🔵 After Break Up To X</option>
+                  </select>
+                </div>
+                <div class="col-6">
+                  <div class="input-group" style="visibility: ${showNum ? 'visible' : 'hidden'}">
+                    <button class="btn btn-outline-secondary" onclick="adjustNum('${t.id}', -1)">-</button>
+                    <input type="number" id="input-${t.id}" class="form-control text-center fw-bold" value="${t.current_alt_number}">
+                    <button class="btn btn-outline-secondary" onclick="adjustNum('${t.id}', 1)">+</button>
+                    <button class="btn btn-primary" onclick="updateNum('${t.id}')">SET</button>
+                  </div>
+                </div>
               </div>
             </div>
-            
-            ${t.is_active ? `
-            <div class="input-group mt-2">
-              <button class="btn btn-outline-secondary" onclick="adjustNum('${t.id}', -1)">-</button>
-              <input type="number" id="input-${t.id}" class="form-control text-center fw-bold" value="${t.current_alt_number}">
-              <button class="btn btn-outline-secondary" onclick="adjustNum('${t.id}', 1)">+</button>
-              <button class="btn btn-primary" onclick="updateNum('${t.id}')">SET</button>
+          </div>`;
+        } else {
+          upcomingDiv.innerHTML += `
+          <div class="list-group-item d-flex justify-content-between align-items-center">
+            <div>
+              <span class="badge bg-light text-dark border mr-2">${t.tournament_date || 'No Date'}</span>
+              <strong>${t.name}</strong> 
+              <span class="text-muted small">(${t.start_time})</span>
             </div>
-            <div class="form-check form-switch mt-2">
-              <input class="form-check-input" type="checkbox" onchange="toggleAlt('${t.id}', this.checked)" ${t.is_alternate_active ? 'checked' : ''}>
-              <label class="form-check-label small">Alternates Active</label>
-            </div>` : ''}
+            <div>
+              <button class="btn btn-sm btn-outline-secondary me-2" onclick="openEdit('${t.id}', '${safeName}', '${t.start_time}', '${safeLoc}', '${t.tournament_date}')">Edit</button>
+              <button class="btn btn-sm btn-success fw-bold" onclick="toggleActive('${t.id}', true)">GO LIVE</button>
+              <button class="btn btn-sm text-danger border-0" onclick="deleteTourn('${t.id}')">X</button>
+            </div>
+          </div>`;
+        }
+      });
 
-          </div>
-        </div>
-      `}).join('');
-
-      // Load Messages
-      const { data: msgs } = await _supabase.from('messages').select('*').order('created_at');
-      document.getElementById('msgList').innerHTML = (msgs || []).map(m => `
+      // RENDER MESSAGES (WITH TOGGLES)
+      document.getElementById('msgList').innerHTML = (msgs.data || []).map(m => {
+        const safeText = m.text.replace(/'/g, "&apos;").replace(/"/g, "&quot;");
+        return `
         <li class="list-group-item d-flex justify-content-between align-items-center">
-          <div class="text-truncate" style="max-width: 200px;">${m.text}</div>
-          <div>
-            <span class="badge-icon ${m.show_on_home ? 'badge-active' : ''}">🏠</span>
-            <span class="badge-icon ${m.show_on_display ? 'badge-active' : ''}">📺</span>
+          <div class="d-flex align-items-center" style="flex: 1; overflow: hidden;">
+             <button class="btn btn-sm btn-light border me-2" onclick="openMsgEdit('${m.id}', '${safeText}')">✏️</button>
+             <div class="text-truncate">${m.text}</div>
+          </div>
+          <div class="d-flex align-items-center ms-2">
+            <span class="msg-toggle ${m.show_on_home ? 'active' : ''}" onclick="toggleMsg('${m.id}', 'show_on_home', ${!m.show_on_home})">🏠</span>
+            <span class="msg-toggle ${m.show_on_display ? 'active' : ''}" onclick="toggleMsg('${m.id}', 'show_on_display', ${!m.show_on_display})">📺</span>
             <button class="btn btn-sm text-danger border-0 ms-2" onclick="delMsg('${m.id}')">X</button>
           </div>
         </li>
-      `).join('');
+      `}).join('');
     }
 
     // --- ACTIONS ---
-    
-    // Explicitly attached to window to ensure HTML buttons find it
-   window.updateNum = async function(id) {
-      console.log("Updating ID:", id);
-      const val = document.getElementById(`input-${id}`).value;
-      
-      // We ask Supabase to return the rows it actually changed (.select())
-      const { data, error } = await _supabase
-        .from('tournaments')
-        .update({ current_alt_number: val })
-        .eq('id', id)
-        .select();
-
-      // 1. Check for Crashes
-      if (error) {
-        alert("CRITICAL ERROR:\n" + error.message);
-        console.error(error);
-        return;
-      }
-
-      // 2. Check for "Ghost Update" (Success but 0 rows changed)
-      if (!data || data.length === 0) {
-        alert("⚠️ UPDATE IGNORED ⚠️\n\nThe database said 'Success' but didn't save the number.\nThis means your RLS Policies are blocking the write.\n\nDid you run the SQL code in Step 1?");
-        return;
-      }
-
-      // 3. Success Visual
-      const btn = document.activeElement;
-      if(btn) {
-         const original = btn.innerText;
-         btn.innerText = "✓ SAVED";
-         btn.classList.replace('btn-primary', 'btn-success');
-         setTimeout(() => {
-           btn.innerText = original;
-           btn.classList.replace('btn-success', 'btn-primary');
-         }, 1500);
-      }
-    }
-    window.adjustNum = function(id, diff) { 
-      const el = document.getElementById(`input-${id}`);
-      let val = Math.max(0, parseInt(el.value || 0) + diff);
-      el.value = val;
-    }
-
-    window.addTourn = async function() {
-      const { error } = await _supabase.from('tournaments').insert([{
-        name: document.getElementById('newName').value,
-        start_time: document.getElementById('newTime').value,
-        location: document.getElementById('newLoc').value,
-        is_active: true
-      }]);
-      if(error) alert(error.message);
-      else refreshAdmin();
-    }
-    
-    window.openEdit = function(id, n, t, l) {
-      document.getElementById('editId').value = id; document.getElementById('editName').value = n;
-      document.getElementById('editTime').value = t; document.getElementById('editLoc').value = l;
+    window.openEdit = (id, name, time, loc, date) => {
+      document.getElementById('editId').value = id;
+      document.getElementById('editName').value = name;
+      document.getElementById('editTime').value = time;
+      document.getElementById('editLoc').value = loc === 'undefined' ? '' : loc;
+      document.getElementById('editDate').value = date;
       editModal.show();
-    }
-    
-    window.saveEdit = async function() {
-      await _supabase.from('tournaments').update({
+    };
+
+    window.saveEdit = async () => {
+      const id = document.getElementById('editId').value;
+      const { error } = await _supabase.from('tournaments').update({
         name: document.getElementById('editName').value,
         start_time: document.getElementById('editTime').value,
-        location: document.getElementById('editLoc').value
-      }).eq('id', document.getElementById('editId').value);
-      editModal.hide(); refreshAdmin();
+        location: document.getElementById('editLoc').value,
+        tournament_date: document.getElementById('editDate').value
+      }).eq('id', id);
+
+      if(error) alert("Save Failed: " + error.message);
+      else { editModal.hide(); refreshAdmin(); }
+    };
+
+    // --- MESSAGE ACTIONS ---
+    window.openMsgEdit = (id, text) => {
+      document.getElementById('msgEditId').value = id;
+      document.getElementById('msgEditText').value = text;
+      msgEditModal.show();
     }
 
-    window.toggleAlt = async function(id, val) { 
-      const { error } = await _supabase.from('tournaments').update({ is_alternate_active: val }).eq('id', id); 
-      if(error) alert(error.message);
-      refreshAdmin(); 
-    }
-    
-    window.endTourn = async function(id) { 
-      if(confirm("End Tournament?")) {
-        await _supabase.from('tournaments').update({ is_active: false }).eq('id', id); 
-        refreshAdmin(); 
-      }
+    window.saveMsgEdit = async () => {
+      const id = document.getElementById('msgEditId').value;
+      const txt = document.getElementById('msgEditText').value;
+      const { error } = await _supabase.from('messages').update({ text: txt }).eq('id', id);
+      if(error) alert("Msg Update Failed: " + error.message);
+      else { msgEditModal.hide(); refreshAdmin(); }
     }
 
-    window.addMsg = async function() {
-      const txt = document.getElementById('newMsg').value;
-      if(!txt) return;
-      const { error } = await _supabase.from('messages').insert([{ 
-        text: txt, 
-        show_on_home: document.getElementById('checkHome').checked, 
-        show_on_display: document.getElementById('checkTV').checked 
-      }]);
-      if(error) alert(error.message);
-      else {
-        document.getElementById('newMsg').value = '';
-        refreshAdmin();
-      }
-    }
-
-    window.delMsg = async function(id) {
-      await _supabase.from('messages').delete().eq('id', id);
+    window.toggleMsg = async (id, field, value) => {
+      // Toggle the boolean value
+      await _supabase.from('messages').update({ [field]: value }).eq('id', id);
       refreshAdmin();
     }
 
-    // Start App
+    // --- OTHER ACTIONS ---
+    window.updateStatusMode = async (id, mode) => { await _supabase.from('tournaments').update({ status_mode: mode }).eq('id', id); refreshAdmin(); };
+    window.toggleActive = async (id, isActive) => { if(!isActive && !confirm("End this event?")) return; await _supabase.from('tournaments').update({ is_active: isActive }).eq('id', id); refreshAdmin(); };
+    window.addToSchedule = async () => {
+      const date = document.getElementById('newDate').value || new Date().toISOString().split('T')[0];
+      const loc = document.getElementById('newLoc').value;
+      await _supabase.from('tournaments').insert([{
+        name: document.getElementById('newName').value,
+        start_time: document.getElementById('newTime').value,
+        location: loc === '' ? 'TBD' : loc,
+        tournament_date: date,
+        is_active: false
+      }]);
+      document.getElementById('newName').value = ''; refreshAdmin();
+    };
+    window.updateNum = async (id) => { const val = document.getElementById(`input-${id}`).value; await _supabase.from('tournaments').update({ current_alt_number: val }).eq('id', id); refreshAdmin(); };
+    window.adjustNum = (id, diff) => { const el = document.getElementById(`input-${id}`); el.value = Math.max(0, parseInt(el.value||0) + diff); };
+    window.deleteTourn = async (id) => { if(confirm("Delete permanently?")) { await _supabase.from('tournaments').delete().eq('id', id); refreshAdmin(); }};
+    window.addMsg = async () => { 
+       const txt = document.getElementById('newMsg').value;
+       if(!txt) return;
+       await _supabase.from('messages').insert([{ text: txt, show_on_home: document.getElementById('checkHome').checked, show_on_display: document.getElementById('checkTV').checked }]);
+       document.getElementById('newMsg').value = ''; refreshAdmin();
+    };
+    window.delMsg = async (id) => { await _supabase.from('messages').delete().eq('id', id); refreshAdmin(); };
+
+    document.getElementById('newDate').valueAsDate = new Date();
     checkUser();
   </script>
 </body>

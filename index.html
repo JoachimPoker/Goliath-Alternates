@@ -14,6 +14,17 @@
   <style>
     body { padding-top: 6vh; } 
     .ticker-wrap { position: fixed; top: 0; left: 0; width: 100%; height: 6vh; z-index: 9999; }
+    
+    /* Upcoming Card Style */
+    .upcoming-card {
+      background: #1e1e2f;
+      border: 1px solid #444;
+      border-left: 5px solid #6c757d; /* Grey accent */
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+      opacity: 0.9;
+    }
   </style>
 </head>
 <body>
@@ -37,23 +48,6 @@
         <div id="mapPointer" class="map-pointer"></div>
       </div>
       <div id="mapFeedback" class="mt-2 fw-bold text-center"></div>
-    </div>
-  </div>
-
-  <div class="modal fade" id="subModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content bg-dark border-secondary text-white">
-        <div class="modal-header border-secondary">
-          <h5 class="modal-title">Track Your Seat</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <p>We will alert you when your number is called.</p>
-          <input type="hidden" id="modalTournId">
-          <input type="number" id="userAltNumber" class="form-control map-input mb-3" placeholder="e.g. 55">
-          <button onclick="saveSubscription()" class="btn btn-warning w-100 fw-bold">START TRACKING</button>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -86,93 +80,83 @@
       }
     }
 
-    // --- 2. LOAD HOME (Updated with Empty Check) ---
-    let subscriptions = JSON.parse(localStorage.getItem('goliath_subs') || '{}');
-    if ("Notification" in window) Notification.requestPermission();
-
+    // --- 2. LOAD HOME (Smart Logic) ---
     async function loadHome() {
-      // DEBUG: Ask for both data AND error
-      const { data, error } = await _supabase
-        .from('tournaments')
-        .select('*')
-        .eq('is_active', true)
-        .order('created_at');
-
-      // 1. ERROR CHECK
-      if (error) {
-        alert("PHONE ERROR: " + error.message); // This tells us exactly what's wrong
-        return;
-      }
-
       const list = document.getElementById('tournamentList');
 
-      // 2. EMPTY CHECK
-      if (!data || data.length === 0) {
-        list.innerHTML = `
-          <div class="text-center py-5 text-secondary">
-            <h3 class="fw-bold" style="opacity:0.5;">NO ACTIVE EVENTS</h3>
-            <p>If you see this but events exist, check Database RLS Policies.</p>
-          </div>
-        `;
+      // A. Try to fetch ACTIVE events first
+      const { data: activeData, error } = await _supabase.from('tournaments').select('*').eq('is_active', true).order('created_at');
+      
+      if (activeData && activeData.length > 0) {
+        // --- RENDER ACTIVE EVENTS ---
+        list.innerHTML = activeData.map(t => {
+          let mainText = "";
+          let mainColor = "text-white"; 
+
+          if (t.status_mode === 'OPEN') { mainText = "IMMEDIATE SEATING"; mainColor = "text-success"; } 
+          else if (t.status_mode === 'ALL') { mainText = "ALL ALTERNATES"; mainColor = "text-danger"; } 
+          else if (t.status_mode === 'BREAK') { mainText = `AFTER BREAK: UP TO #${t.current_alt_number}`; mainColor = "text-info"; } 
+          else { mainText = `CALLING UP TO #${t.current_alt_number}`; mainColor = "text-warning"; }
+
+          return `
+          <div class="flat-card">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <span class="badge bg-dark border border-secondary">${t.start_time}</span>
+              <span class="badge bg-dark border border-secondary">${t.location || 'TBD'}</span>
+            </div>
+            <div class="tourn-title">${t.name}</div>
+            <div class="row align-items-end border-top border-secondary pt-3 mt-2">
+              <div class="col-12 text-center">
+                <div class="display-5 fw-bold ${mainColor}" style="line-height:1.1">${mainText}</div>
+              </div>
+            </div>
+          </div>`;
+        }).join('');
         return;
       }
+
+      // B. If NO ACTIVE events, fetch UPCOMING (Calendar)
+      // Get today's date in YYYY-MM-DD format
+      const today = new Date().toISOString().split('T')[0];
       
-      list.innerHTML = data.map(t => {
-        const subData = subscriptions[t.id]; 
-        const isTracking = subData !== undefined;
-        let alertUI = '';
+      const { data: upcomingData } = await _supabase
+        .from('tournaments')
+        .select('*')
+        .eq('is_active', false)
+        .gte('tournament_date', today) // Only future/today
+        .order('tournament_date', { ascending: true })
+        .order('start_time', { ascending: true })
+        .limit(5); // Show next 5 events
 
-        if (isTracking) {
-           const hasBeenCalled = t.current_alt_number >= subData.num;
-           if (hasBeenCalled) {
-             if (!subData.notified) { triggerAlert(t.name, t.current_alt_number); markAsNotified(t.id); }
-             alertUI = `<div class="called-box mt-2"><h2 class="fw-bold mb-0">SEAT READY!</h2><div class="small text-white">FOR ${t.name}</div><button onclick="clearSub('${t.id}')" class="btn btn-light btn-sm fw-bold w-100 mt-2">I'M HERE</button></div>`;
-           } else {
-             alertUI = `<div class="tracking-box mt-2"><div class="fw-bold text-info">TRACKING #${subData.num}</div><div class="small text-muted mb-2">in ${t.name}</div><button onclick="clearSub('${t.id}')" class="btn btn-sm btn-outline-secondary w-100">CANCEL</button></div>`;
-           }
-        } else {
-           alertUI = t.is_alternate_active ? `<button onclick="openSubModal('${t.id}')" class="btn-notify mt-2">NOTIFY ME</button>` : '';
-        }
+      if (!upcomingData || upcomingData.length === 0) {
+        list.innerHTML = `<div class="text-center py-5 text-secondary"><h3>NO ACTIVE EVENTS</h3></div>`;
+        return;
+      }
 
-        return `
-        <div class="flat-card">
-          <div class="d-flex justify-content-between align-items-start mb-2">
-            <span class="badge bg-dark border border-secondary">${t.start_time}</span>
-            <span class="${t.is_alternate_active ? 'badge-alt' : 'badge-open'}">${t.is_alternate_active ? 'ALT LIST' : 'OPEN'}</span>
-          </div>
-          <div class="tourn-title">${t.name}</div>
-          <div class="tourn-info">${t.location}</div>
-          <div class="row align-items-end border-top border-secondary pt-3">
-            <div class="col-6">
-              <div class="small text-muted fw-bold">NOW CALLING</div>
-              <div class="display-4 fw-bold text-warning" style="line-height:1">${t.is_alternate_active ? '#' + t.current_alt_number : 'ALL ALTERNATES'}</div>
+      // --- RENDER UPCOMING SCHEDULE ---
+      let html = `<div class="text-center mb-4"><h4 class="text-secondary fw-bold" style="letter-spacing:1px; opacity:0.7;">UPCOMING SCHEDULE</h4></div>`;
+      
+      html += upcomingData.map(t => `
+        <div class="upcoming-card">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+               <div style="color:var(--text-gold); font-weight:bold; font-size:0.85rem;">${t.tournament_date}</div>
+               <div class="fw-bold text-white" style="font-size: 1.2rem;">${t.name}</div>
             </div>
-            <div class="col-6">${alertUI}</div>
+            <div class="text-end">
+               <span class="badge bg-secondary">${t.start_time}</span>
+            </div>
+          </div>
+          <div class="mt-2 text-muted small border-top border-secondary pt-2" style="border-style:dashed!important;">
+             Location: ${t.location || 'TBD'}
           </div>
         </div>
-      `}).join('');
+      `).join('');
+
+      list.innerHTML = html;
     }
 
     // --- 3. HELPERS ---
-    const modal = new bootstrap.Modal(document.getElementById('subModal'));
-    function openSubModal(id) { document.getElementById('modalTournId').value = id; modal.show(); }
-    function saveSubscription() { 
-      const id = document.getElementById('modalTournId').value;
-      const num = parseInt(document.getElementById('userAltNumber').value);
-      if(!num) return alert("Enter number");
-      subscriptions[id] = { num: num, notified: false };
-      localStorage.setItem('goliath_subs', JSON.stringify(subscriptions));
-      modal.hide(); loadHome();
-    }
-    function clearSub(id) { delete subscriptions[id]; localStorage.setItem('goliath_subs', JSON.stringify(subscriptions)); loadHome(); }
-    function markAsNotified(id) { if(subscriptions[id]) { subscriptions[id].notified = true; localStorage.setItem('goliath_subs', JSON.stringify(subscriptions)); } }
-    function triggerAlert(name, currentNum) { 
-      if(navigator.vibrate) navigator.vibrate([500,200,500]); 
-      if(Notification.permission==="granted") { new Notification(`SEAT READY: ${name}`, { body: `Go to the desk! They are calling #${currentNum}` }); }
-      alert(`SEAT READY FOR: ${name}\n\nThey are calling #${currentNum}`); 
-    }
-
-    // Map Logic
     document.getElementById('mapSearch').addEventListener('input', async (e) => {
       const val = e.target.value; const ptr = document.getElementById('mapPointer');
       if(!val) { ptr.style.display='none'; return; }
