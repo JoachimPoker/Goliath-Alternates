@@ -204,3 +204,36 @@ body {
   0% { transform: translate3d(0, 0, 0); }
   100% { transform: translate3d(-100%, 0, 0); }
 }
+
+/* === INTERACTIVE MAP STYLES === */
+.table-highlight {
+  fill: var(--text-gold) !important; /* Uses your existing gold color */
+  stroke: #fff !important;
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 10px var(--text-gold));
+  transition: all 0.3s ease;
+}
+
+.map-dimmed [id^="table-"] {
+  opacity: 0.3;
+  transition: opacity 0.3s ease;
+}
+.map-dimmed .table-highlight {
+  opacity: 1;
+}
+
+.wayfinder-path {
+  fill: none;
+  stroke: #0dcaf0; /* Cyan path */
+  stroke-width: 4px;
+  stroke-dasharray: 10 10;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  animation: march 0.5s linear infinite; 
+  filter: drop-shadow(0 0 5px #0dcaf0);
+  pointer-events: none;
+}
+
+@keyframes march {
+  to { stroke-dashoffset: -20; }
+}

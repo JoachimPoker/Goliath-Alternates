@@ -25,12 +25,14 @@
 
     <div class="flat-card mt-5">
       <h4 class="text-white mb-3">Find Your Table</h4>
-      <input type="text" id="mapSearch" class="form-control map-input mb-3" placeholder="Enter Table # (e.g. 45)">
-      <div style="position:relative; border: 2px solid #444; border-radius:8px; overflow:hidden;">
-        <img src="map.jpg" class="img-fluid" style="opacity:0.8; width:100%;">
-        <div id="mapPointer" class="map-pointer"></div>
+      <input type="number" id="mapSearch" class="form-control map-input mb-3" placeholder="Enter Table # (e.g. 45)">
+      
+      <div id="mapContainer" style="position:relative; border: 2px solid #444; border-radius:8px; overflow:hidden; height: 400px; background: #111; cursor: grab;">
+        <div id="svgWrapper" style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center;">
+           <p class="text-secondary mt-5" id="mapLoadingText">Loading map...</p>
+        </div>
       </div>
-      <div id="mapFeedback" class="mt-2 fw-bold text-center"></div>
+      <div id="mapFeedback" class="mt-2 fw-bold text-center text-warning"></div>
     </div>
   </div>
 
@@ -53,6 +55,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@panzoom/panzoom/dist/panzoom.min.js"></script>
   <script src="js/supabase-config.js"></script>
   
   <script>
@@ -80,7 +83,7 @@
       }
     }
 
-    // --- 2. LOAD HOME (Updated with Empty Check) ---
+    // --- 2. LOAD HOME ---
     let subscriptions = JSON.parse(localStorage.getItem('goliath_subs') || '{}');
     if ("Notification" in window) Notification.requestPermission();
 
@@ -88,7 +91,6 @@
       const { data } = await _supabase.from('tournaments').select('*').eq('is_active', true).order('created_at');
       const list = document.getElementById('tournamentList');
 
-      // --- CHECK FOR EMPTY LIST ---
       if (!data || data.length === 0) {
         list.innerHTML = `
           <div class="text-center py-5 text-secondary">
@@ -112,8 +114,6 @@
            } else {
              alertUI = `<div class="tracking-box mt-2"><div class="fw-bold text-info">TRACKING #${subData.num}</div><div class="small text-muted mb-2">in ${t.name}</div><button onclick="clearSub('${t.id}')" class="btn btn-sm btn-outline-secondary w-100">CANCEL</button></div>`;
            }
-        } else {
-           alertUI = t.is_alternate_active ? `<button onclick="openSubModal('${t.id}')" class="btn-notify mt-2">NOTIFY ME</button>` : '';
         }
 
         return `
@@ -135,7 +135,7 @@
       `}).join('');
     }
 
-    // --- 3. HELPERS ---
+    // --- 3. MODAL HELPERS ---
     const modal = new bootstrap.Modal(document.getElementById('subModal'));
     function openSubModal(id) { document.getElementById('modalTournId').value = id; modal.show(); }
     function saveSubscription() { 
@@ -154,15 +154,100 @@
       alert(`SEAT READY FOR: ${name}\n\nThey are calling #${currentNum}`); 
     }
 
-    // Map Logic
-    document.getElementById('mapSearch').addEventListener('input', async (e) => {
-      const val = e.target.value; const ptr = document.getElementById('mapPointer');
-      if(!val) { ptr.style.display='none'; return; }
-      const { data } = await _supabase.from('table_map').select('*').eq('table_number', val).single();
-      if(data) { ptr.style.display='block'; ptr.style.left=data.x_percent+'%'; ptr.style.top=data.y_percent+'%'; }
-      else ptr.style.display='none';
+    // --- 4. NEW INTERACTIVE MAP LOGIC ---
+    let panzoomInstance = null;
+
+    async function initMaps() {
+      const wrapper = document.getElementById('svgWrapper');
+      wrapper.innerHTML = ''; 
+
+      try {
+        const response = await fetch('main-hall.svg');
+        if(!response.ok) throw new Error("File not found");
+        const svgText = await response.text();
+        
+        const mapDiv = document.createElement('div');
+        mapDiv.style.width = '100%';
+        mapDiv.style.height = '100%';
+        mapDiv.innerHTML = svgText;
+        
+        const svgElement = mapDiv.querySelector('svg');
+        if(svgElement) {
+          svgElement.style.width = '100%';
+          svgElement.style.height = '100%';
+          svgElement.id = `svg-main`;
+        }
+        wrapper.appendChild(mapDiv);
+      } catch(e) {
+        wrapper.innerHTML = `<p class="text-danger mt-5">Could not load main-hall.svg. Ensure it is in the same folder.</p>`;
+      }
+
+      panzoomInstance = Panzoom(wrapper, {
+        maxScale: 4,
+        minScale: 1,
+        contain: 'outside'
+      });
+      wrapper.parentElement.addEventListener('wheel', panzoomInstance.zoomWithWheel);
+    }
+
+    function clearPathAndHighlights() {
+      document.querySelectorAll('.table-highlight').forEach(el => el.classList.remove('table-highlight'));
+      document.querySelectorAll('svg').forEach(svg => svg.classList.remove('map-dimmed'));
+      const existingPath = document.getElementById('dynamic-path');
+      if (existingPath) existingPath.remove();
+    }
+
+    document.getElementById('mapSearch').addEventListener('input', (e) => {
+      const tableNum = parseInt(e.target.value);
+      const feedback = document.getElementById('mapFeedback');
+      clearPathAndHighlights();
+      
+      if (isNaN(tableNum)) { feedback.innerText = ''; return; }
+
+      const svgMap = document.getElementById(`svg-main`);
+      // MUST MATCH YOUR SVG LAYER NAMES EXACTLY
+      const tableEl = document.getElementById(`table-${tableNum}`);
+      const entranceEl = document.getElementById('entrance-main');
+
+      if (!svgMap) return;
+
+      if (!tableEl) {
+         feedback.innerText = `Table ${tableNum} not found on this map.`;
+         return;
+      }
+      feedback.innerText = "";
+
+      svgMap.classList.add('map-dimmed');
+      tableEl.classList.add('table-highlight');
+
+      if (entranceEl) {
+        try {
+            const tBox = tableEl.getBBox();
+            const eBox = entranceEl.getBBox();
+            const tX = tBox.x + (tBox.width / 2);
+            const tY = tBox.y + (tBox.height / 2);
+            const eX = eBox.x + (eBox.width / 2);
+            const eY = eBox.y + (eBox.height / 2);
+
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("id", "dynamic-path");
+            path.setAttribute("class", "wayfinder-path");
+            path.setAttribute("d", `M ${eX} ${eY} L ${eX} ${tY} L ${tX} ${tY}`);
+            
+            svgMap.appendChild(path);
+        } catch(error) {
+            console.log("Could not draw path. Ensure entrance-main exists in SVG.", error);
+        }
+      }
+
+      if(panzoomInstance) {
+         setTimeout(() => panzoomInstance.zoom(1.5, { animate: true }), 100);
+      }
     });
 
+    window.addEventListener('DOMContentLoaded', initMaps);
+
+    // Initial Loaders
     _supabase.channel('public').on('postgres_changes', {event:'*', schema:'public'}, () => { loadHome(); loadTicker(); }).subscribe();
     loadHome();
     loadTicker();
