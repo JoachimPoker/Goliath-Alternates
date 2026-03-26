@@ -239,11 +239,6 @@
             console.log("Could not draw path. Ensure entrance-main exists in SVG.", error);
         }
       }
-
-      if(panzoomInstance) {
-         // Smoothly zoom out so the player can see the full walking path
-         setTimeout(() => panzoomInstance.reset({ animate: true }), 100);
-      }
     });
 
     window.addEventListener('DOMContentLoaded', initMaps);
