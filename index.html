@@ -241,7 +241,8 @@
       }
 
       if(panzoomInstance) {
-         setTimeout(() => panzoomInstance.zoom(1.5, { animate: true }), 100);
+         // Smoothly zoom out so the player can see the full walking path
+         setTimeout(() => panzoomInstance.reset({ animate: true }), 100);
       }
     });
 
