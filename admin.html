@@ -32,9 +32,25 @@
       <h2>Admin Dashboard</h2>
       <div>
          <button onclick="window.location.reload()" class="btn btn-outline-secondary btn-sm">Refresh</button>
-         <button onclick="window.open('index.html')" class="btn btn-outline-primary btn-sm">Open Hub</button>
-         <button onclick="window.open('display.html')" class="btn btn-outline-dark btn-sm">Open TV</button>
+         <button onclick="window.open('index.html')" class="btn btn-outline-primary btn-sm">Open Website</button>
+         <button onclick="window.open('display.html')" class="btn btn-outline-dark btn-sm">Open Alt Desk</button>
+         <button onclick="window.open('regdesk.html')" class="btn btn-outline-warning btn-sm">Open Reg Desk</button>
          <button onclick="logout()" class="btn btn-danger btn-sm ms-2">Logout</button>
+      </div>
+    </div>
+
+    <div class="card p-3 mb-4 shadow-sm border-0 bg-white">
+      <div class="d-flex align-items-center gap-3">
+        <div id="siteLogoPreviewWrap" style="min-width:90px;"></div>
+        <div class="flex-grow-1">
+          <h6 class="mb-1">Site Logo</h6>
+          <p class="text-muted small mb-2">Used on the website header and the reg desk video wall badge, in place of the "GOLIATH" text. Leave blank to keep the text version.</p>
+          <div class="input-group input-group-sm" style="max-width:420px;">
+            <input type="file" id="siteLogoFile" class="form-control" accept="image/*">
+            <button onclick="uploadSiteLogo()" class="btn btn-primary">Upload</button>
+            <button onclick="clearSiteLogo()" class="btn btn-outline-secondary">Remove</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -69,16 +85,72 @@
             <div>
               <div class="form-check form-check-inline">
                 <input class="form-check-input" type="checkbox" id="checkHome" checked>
-                <label class="form-check-label small">Show on Home 🏠</label>
+                <label class="form-check-label small">Show on Website 🌐</label>
               </div>
               <div class="form-check form-check-inline">
                 <input class="form-check-input" type="checkbox" id="checkTV" checked>
-                <label class="form-check-label small">Show on TV 📺</label>
+                <label class="form-check-label small">Show on Alt Desk 🖥️</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="checkRegdesk">
+                <label class="form-check-label small">Show on Reg Desk 🛎️</label>
               </div>
             </div>
             <button onclick="addMsg()" class="btn btn-primary btn-sm px-4">ADD</button>
           </div>
           <ul id="msgList" class="list-group list-group-flush small"></ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="row mt-3">
+      <div class="col-lg-7">
+        <h4 class="mb-3">📺 Reg Desk Video Wall</h4>
+        <p class="text-muted small mb-2">Toggle each station open/closed and set what it's serving. Updates the video wall instantly. When all 4 are closed, the wall switches to the idle slideshow.</p>
+
+        <div class="card p-3 mb-3 shadow-sm border-0 bg-white">
+          <h6 class="mb-2">Live Screen Background</h6>
+          <p class="text-muted small mb-2">Behind the header and stations while at least one station is open. Design at 1920x384 for a clean full-bleed fit with no cropping. Leave blank to use the default gradient.</p>
+          <div id="regdeskBgPreviewWrap" class="mb-2"></div>
+          <div class="input-group input-group-sm">
+            <input type="file" id="regdeskBgFile" class="form-control" accept="image/*">
+            <button onclick="uploadRegdeskBg('regdeskBgFile', 'background_url', 'background_path')" class="btn btn-primary">Upload</button>
+            <button onclick="clearRegdeskBg('background_url', 'background_path')" class="btn btn-outline-secondary">Remove</button>
+          </div>
+        </div>
+
+        <div class="card p-3 mb-3 shadow-sm border-0 bg-white">
+          <h6 class="mb-2">Idle Screen Images</h6>
+          <p class="text-muted small mb-2">Shown full-screen when all 4 stations are closed. Add as many as you like - each has its own display duration. With just one, it shows statically (no rotation). Design at 1920x384 for a clean full-bleed fit.</p>
+          <div class="input-group input-group-sm mb-2">
+            <input type="file" id="regdeskIdleFile" class="form-control" accept="image/*">
+            <button onclick="uploadRegdeskIdleImage()" class="btn btn-primary">Upload</button>
+          </div>
+          <div id="regdeskIdleWrap"></div>
+        </div>
+
+        <div id="stationsWrap"></div>
+      </div>
+
+      <div class="col-lg-5">
+        <h4 class="mb-3">🖼️ Ad Banners</h4>
+        <div class="card p-3 shadow-sm border-0 bg-white">
+          <p class="text-muted small mb-2">Rotating carousel on the mobile website only. Design at <strong>1200x400px (3:1)</strong> so they fill the space edge-to-edge with no cropping.</p>
+          <div class="input-group mb-3">
+            <input type="file" id="bannerFile" class="form-control" accept="image/*">
+            <button onclick="uploadBanner()" class="btn btn-primary">Upload</button>
+          </div>
+          <div id="bannersWrap"></div>
+        </div>
+
+        <h4 class="mb-3 mt-4">🗺️ Alt Desk Left Panel</h4>
+        <div class="card p-3 shadow-sm border-0 bg-white">
+          <p class="text-muted small mb-2">Replaces the floor map area on the Alt Desk screen. Add floor plans, ads, whatever you like - each has its own duration. Images are shown in full with no cropping regardless of shape.</p>
+          <div class="input-group input-group-sm mb-2">
+            <input type="file" id="displayCarouselFile" class="form-control" accept="image/*">
+            <button onclick="uploadDisplayCarouselImage()" class="btn btn-primary">Upload</button>
+          </div>
+          <div id="displayCarouselWrap"></div>
         </div>
       </div>
     </div>
@@ -152,6 +224,12 @@
     async function refreshAdmin() {
       const { data: tours } = await _supabase.from('tournaments').select('*').order('tournament_date', {ascending: true}).order('start_time', {ascending: true});
       const msgs = await _supabase.from('messages').select('*').order('created_at');
+      refreshStations();
+      refreshBanners();
+      refreshRegdeskBackground();
+      refreshRegdeskIdleImages();
+      refreshSiteLogo();
+      refreshDisplayCarousel();
 
       const liveDiv = document.getElementById('liveList');
       const upcomingDiv = document.getElementById('upcomingList');
@@ -225,8 +303,9 @@
              <div class="text-truncate">${m.text}</div>
           </div>
           <div class="d-flex align-items-center ms-2">
-            <span class="msg-toggle ${m.show_on_home ? 'active' : ''}" onclick="toggleMsg('${m.id}', 'show_on_home', ${!m.show_on_home})">🏠</span>
-            <span class="msg-toggle ${m.show_on_display ? 'active' : ''}" onclick="toggleMsg('${m.id}', 'show_on_display', ${!m.show_on_display})">📺</span>
+            <span class="msg-toggle ${m.show_on_home ? 'active' : ''}" title="Website" onclick="toggleMsg('${m.id}', 'show_on_home', ${!m.show_on_home})">🌐</span>
+            <span class="msg-toggle ${m.show_on_display ? 'active' : ''}" title="Alt Desk" onclick="toggleMsg('${m.id}', 'show_on_display', ${!m.show_on_display})">🖥️</span>
+            <span class="msg-toggle ${m.show_on_regdesk ? 'active' : ''}" title="Reg Desk" onclick="toggleMsg('${m.id}', 'show_on_regdesk', ${!m.show_on_regdesk})">🛎️</span>
             <button class="btn btn-sm text-danger border-0 ms-2" onclick="delMsg('${m.id}')">X</button>
           </div>
         </li>
@@ -298,10 +377,392 @@
     window.addMsg = async () => { 
        const txt = document.getElementById('newMsg').value;
        if(!txt) return;
-       await _supabase.from('messages').insert([{ text: txt, show_on_home: document.getElementById('checkHome').checked, show_on_display: document.getElementById('checkTV').checked }]);
+       await _supabase.from('messages').insert([{
+         text: txt,
+         show_on_home: document.getElementById('checkHome').checked,
+         show_on_display: document.getElementById('checkTV').checked,
+         show_on_regdesk: document.getElementById('checkRegdesk').checked
+       }]);
        document.getElementById('newMsg').value = ''; refreshAdmin();
     };
     window.delMsg = async (id) => { await _supabase.from('messages').delete().eq('id', id); refreshAdmin(); };
+
+    // --- REG DESK LIVE BACKGROUND IMAGE ---
+    async function refreshRegdeskBackground() {
+      const { data } = await _supabase.from('regdesk_settings').select('*').eq('id', 1).maybeSingle();
+      renderBgPreview('regdeskBgPreviewWrap', data && data.background_url);
+    }
+
+    function renderBgPreview(elId, url) {
+      const wrap = document.getElementById(elId);
+      wrap.innerHTML = url
+        ? `<img src="${url}" style="height:70px;max-width:100%;object-fit:cover;border-radius:4px;border:1px solid #ddd;">`
+        : `<p class="text-muted small mb-0">No background set - using the default gradient.</p>`;
+    }
+
+    window.uploadRegdeskBg = async (fileInputId, urlField, pathField) => {
+      const fileInput = document.getElementById(fileInputId);
+      const file = fileInput.files[0];
+      if (!file) { alert('Choose an image first'); return; }
+
+      const { data: existing } = await _supabase.from('regdesk_settings').select('*').eq('id', 1).maybeSingle();
+
+      const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
+      const path = `bg-${Date.now()}-${safeName}`;
+
+      const { error: upErr } = await _supabase.storage.from('banners').upload(path, file);
+      if (upErr) { alert('Upload failed: ' + upErr.message); return; }
+
+      const { data: pub } = _supabase.storage.from('banners').getPublicUrl(path);
+
+      const patch = { id: 1, updated_at: new Date().toISOString() };
+      patch[urlField] = pub.publicUrl;
+      patch[pathField] = path;
+
+      const { error: upsertErr } = await _supabase.from('regdesk_settings').upsert([patch]);
+      if (upsertErr) { alert('Save failed: ' + upsertErr.message); return; }
+
+      const oldPath = existing && existing[pathField];
+      if (oldPath) await _supabase.storage.from('banners').remove([oldPath]);
+
+      fileInput.value = '';
+      refreshRegdeskBackground();
+    };
+
+    window.clearRegdeskBg = async (urlField, pathField) => {
+      const { data: existing } = await _supabase.from('regdesk_settings').select('*').eq('id', 1).maybeSingle();
+
+      const patch = { id: 1, updated_at: new Date().toISOString() };
+      patch[urlField] = null;
+      patch[pathField] = null;
+      await _supabase.from('regdesk_settings').upsert([patch]);
+
+      const oldPath = existing && existing[pathField];
+      if (oldPath) await _supabase.storage.from('banners').remove([oldPath]);
+
+      refreshRegdeskBackground();
+    };
+
+    // --- REG DESK IDLE IMAGES (multiple, each with its own duration) ---
+    window._idleImagesCache = [];
+    async function refreshRegdeskIdleImages() {
+      const { data } = await _supabase.from('regdesk_idle_images').select('*').order('sort_order');
+      const list = data || [];
+      window._idleImagesCache = list;
+      const wrap = document.getElementById('regdeskIdleWrap');
+
+      if (list.length === 0) {
+        wrap.innerHTML = '<p class="text-muted small mb-0">No idle images yet - the idle screen will just show the default gradient.</p>';
+        return;
+      }
+
+      wrap.innerHTML = list.map((img, idx) => `
+        <div class="d-flex align-items-center gap-2 border rounded p-2 mb-2 bg-white">
+          <img src="${img.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">
+          <div class="input-group input-group-sm" style="max-width:140px;">
+            <input type="number" min="1" class="form-control" id="idleDur-${img.id}" value="${img.duration_seconds}">
+            <span class="input-group-text">sec</span>
+          </div>
+          <button class="btn btn-sm btn-outline-secondary" onclick="saveIdleImageDuration('${img.id}')">Save</button>
+          <div class="flex-grow-1"></div>
+          <button class="btn btn-sm btn-light border" onclick="moveIdleImage(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
+          <button class="btn btn-sm btn-light border" onclick="moveIdleImage(${idx}, 1)" ${idx === list.length - 1 ? 'disabled' : ''}>↓</button>
+          <span class="msg-toggle ${img.is_active ? 'active' : ''}" title="Active in rotation" onclick="toggleIdleImage('${img.id}', ${!img.is_active})">👁️</span>
+          <button class="btn btn-sm text-danger border-0" onclick="deleteIdleImage('${img.id}', '${img.storage_path}')">X</button>
+        </div>
+      `).join('');
+    }
+
+    window.uploadRegdeskIdleImage = async () => {
+      const fileInput = document.getElementById('regdeskIdleFile');
+      const file = fileInput.files[0];
+      if (!file) { alert('Choose an image first'); return; }
+
+      const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
+      const path = `idle-${Date.now()}-${safeName}`;
+
+      const { error: upErr } = await _supabase.storage.from('banners').upload(path, file);
+      if (upErr) { alert('Upload failed: ' + upErr.message); return; }
+
+      const { data: pub } = _supabase.storage.from('banners').getPublicUrl(path);
+      const maxOrder = (window._idleImagesCache || []).reduce((m, i) => Math.max(m, i.sort_order || 0), 0);
+
+      const { error: insErr } = await _supabase.from('regdesk_idle_images').insert([{
+        image_url: pub.publicUrl,
+        storage_path: path,
+        duration_seconds: 8,
+        is_active: true,
+        sort_order: maxOrder + 1
+      }]);
+      if (insErr) alert('Save failed: ' + insErr.message);
+
+      fileInput.value = '';
+      refreshRegdeskIdleImages();
+    };
+
+    window.saveIdleImageDuration = async (id) => {
+      const val = parseInt(document.getElementById(`idleDur-${id}`).value) || 8;
+      await _supabase.from('regdesk_idle_images').update({ duration_seconds: val }).eq('id', id);
+      refreshRegdeskIdleImages();
+    };
+
+    window.toggleIdleImage = async (id, val) => {
+      await _supabase.from('regdesk_idle_images').update({ is_active: val }).eq('id', id);
+      refreshRegdeskIdleImages();
+    };
+
+    window.deleteIdleImage = async (id, path) => {
+      if (!confirm('Delete this idle image?')) return;
+      await _supabase.storage.from('banners').remove([path]);
+      await _supabase.from('regdesk_idle_images').delete().eq('id', id);
+      refreshRegdeskIdleImages();
+    };
+
+    window.moveIdleImage = async (idx, dir) => {
+      const list = window._idleImagesCache || [];
+      const otherIdx = idx + dir;
+      if (otherIdx < 0 || otherIdx >= list.length) return;
+      const a = list[idx], b = list[otherIdx];
+      await _supabase.from('regdesk_idle_images').update({ sort_order: b.sort_order }).eq('id', a.id);
+      await _supabase.from('regdesk_idle_images').update({ sort_order: a.sort_order }).eq('id', b.id);
+      refreshRegdeskIdleImages();
+    };
+
+    // --- SITE LOGO ---
+    async function refreshSiteLogo() {
+      const { data } = await _supabase.from('site_settings').select('*').eq('id', 1).maybeSingle();
+      const wrap = document.getElementById('siteLogoPreviewWrap');
+      wrap.innerHTML = (data && data.logo_url)
+        ? `<img src="${data.logo_url}" style="height:60px;max-width:200px;object-fit:contain;border-radius:4px;">`
+        : `<p class="text-muted small mb-0">No logo set - "GOLIATH" text is used.</p>`;
+    }
+
+    window.uploadSiteLogo = async () => {
+      const fileInput = document.getElementById('siteLogoFile');
+      const file = fileInput.files[0];
+      if (!file) { alert('Choose an image first'); return; }
+
+      const { data: existing } = await _supabase.from('site_settings').select('*').eq('id', 1).maybeSingle();
+
+      const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
+      const path = `logo-${Date.now()}-${safeName}`;
+
+      const { error: upErr } = await _supabase.storage.from('banners').upload(path, file);
+      if (upErr) { alert('Upload failed: ' + upErr.message); return; }
+
+      const { data: pub } = _supabase.storage.from('banners').getPublicUrl(path);
+
+      const { error: upsertErr } = await _supabase.from('site_settings').upsert([{
+        id: 1, logo_url: pub.publicUrl, logo_path: path, updated_at: new Date().toISOString()
+      }]);
+      if (upsertErr) { alert('Save failed: ' + upsertErr.message); return; }
+
+      if (existing && existing.logo_path) await _supabase.storage.from('banners').remove([existing.logo_path]);
+
+      fileInput.value = '';
+      refreshSiteLogo();
+    };
+
+    window.clearSiteLogo = async () => {
+      const { data: existing } = await _supabase.from('site_settings').select('*').eq('id', 1).maybeSingle();
+      await _supabase.from('site_settings').upsert([{ id: 1, logo_url: null, logo_path: null, updated_at: new Date().toISOString() }]);
+      if (existing && existing.logo_path) await _supabase.storage.from('banners').remove([existing.logo_path]);
+      refreshSiteLogo();
+    };
+
+    // --- ALT DESK LEFT-PANEL CAROUSEL ---
+    window._displayCarouselCache = [];
+    async function refreshDisplayCarousel() {
+      const { data } = await _supabase.from('display_carousel_images').select('*').order('sort_order');
+      const list = data || [];
+      window._displayCarouselCache = list;
+      const wrap = document.getElementById('displayCarouselWrap');
+
+      if (list.length === 0) {
+        wrap.innerHTML = '<p class="text-muted small mb-0">No images yet.</p>';
+        return;
+      }
+
+      wrap.innerHTML = list.map((img, idx) => `
+        <div class="d-flex align-items-center gap-2 border rounded p-2 mb-2 bg-white">
+          <img src="${img.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">
+          <div class="input-group input-group-sm" style="max-width:140px;">
+            <input type="number" min="1" class="form-control" id="dispDur-${img.id}" value="${img.duration_seconds}">
+            <span class="input-group-text">sec</span>
+          </div>
+          <button class="btn btn-sm btn-outline-secondary" onclick="saveDisplayCarouselDuration('${img.id}')">Save</button>
+          <div class="flex-grow-1"></div>
+          <button class="btn btn-sm btn-light border" onclick="moveDisplayCarouselImage(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
+          <button class="btn btn-sm btn-light border" onclick="moveDisplayCarouselImage(${idx}, 1)" ${idx === list.length - 1 ? 'disabled' : ''}>↓</button>
+          <span class="msg-toggle ${img.is_active ? 'active' : ''}" title="Active in rotation" onclick="toggleDisplayCarouselImage('${img.id}', ${!img.is_active})">👁️</span>
+          <button class="btn btn-sm text-danger border-0" onclick="deleteDisplayCarouselImage('${img.id}', ${img.storage_path ? `'${img.storage_path}'` : 'null'})">X</button>
+        </div>
+      `).join('');
+    }
+
+    window.uploadDisplayCarouselImage = async () => {
+      const fileInput = document.getElementById('displayCarouselFile');
+      const file = fileInput.files[0];
+      if (!file) { alert('Choose an image first'); return; }
+
+      const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
+      const path = `display-${Date.now()}-${safeName}`;
+
+      const { error: upErr } = await _supabase.storage.from('banners').upload(path, file);
+      if (upErr) { alert('Upload failed: ' + upErr.message); return; }
+
+      const { data: pub } = _supabase.storage.from('banners').getPublicUrl(path);
+      const maxOrder = (window._displayCarouselCache || []).reduce((m, i) => Math.max(m, i.sort_order || 0), 0);
+
+      const { error: insErr } = await _supabase.from('display_carousel_images').insert([{
+        image_url: pub.publicUrl,
+        storage_path: path,
+        duration_seconds: 10,
+        is_active: true,
+        sort_order: maxOrder + 1
+      }]);
+      if (insErr) alert('Save failed: ' + insErr.message);
+
+      fileInput.value = '';
+      refreshDisplayCarousel();
+    };
+
+    window.saveDisplayCarouselDuration = async (id) => {
+      const val = parseInt(document.getElementById(`dispDur-${id}`).value) || 10;
+      await _supabase.from('display_carousel_images').update({ duration_seconds: val }).eq('id', id);
+      refreshDisplayCarousel();
+    };
+
+    window.toggleDisplayCarouselImage = async (id, val) => {
+      await _supabase.from('display_carousel_images').update({ is_active: val }).eq('id', id);
+      refreshDisplayCarousel();
+    };
+
+    window.deleteDisplayCarouselImage = async (id, path) => {
+      if (!confirm('Delete this image?')) return;
+      if (path) await _supabase.storage.from('banners').remove([path]);
+      await _supabase.from('display_carousel_images').delete().eq('id', id);
+      refreshDisplayCarousel();
+    };
+
+    window.moveDisplayCarouselImage = async (idx, dir) => {
+      const list = window._displayCarouselCache || [];
+      const otherIdx = idx + dir;
+      if (otherIdx < 0 || otherIdx >= list.length) return;
+      const a = list[idx], b = list[otherIdx];
+      await _supabase.from('display_carousel_images').update({ sort_order: b.sort_order }).eq('id', a.id);
+      await _supabase.from('display_carousel_images').update({ sort_order: a.sort_order }).eq('id', b.id);
+      refreshDisplayCarousel();
+    };
+
+    // --- REG DESK STATIONS ---
+    async function refreshStations() {
+      const { data } = await _supabase.from('stations').select('*').order('station_number');
+      const wrap = document.getElementById('stationsWrap');
+      wrap.innerHTML = (data || []).map(s => {
+        const safeLabel = (s.label || '').replace(/"/g, '&quot;');
+        const safeServing = (s.serving_text || '').replace(/"/g, '&quot;');
+        return `
+        <div class="card p-3 mb-2 shadow-sm border-0 bg-white">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <input class="form-control form-control-sm me-2" style="max-width:160px" id="stnLabel-${s.id}" value="${safeLabel}">
+            <div class="form-check form-switch mb-0 d-flex align-items-center">
+              <input class="form-check-input me-2" type="checkbox" role="switch" style="width:3em;height:1.5em;" ${s.is_open ? 'checked' : ''} onchange="toggleStation('${s.id}', this.checked)">
+              <label class="form-check-label small fw-bold ${s.is_open ? 'text-success' : 'text-secondary'}">${s.is_open ? 'OPEN' : 'CLOSED'}</label>
+            </div>
+          </div>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text">Serving</span>
+            <input class="form-control" id="stnServing-${s.id}" placeholder="e.g. NLH Day 1B" value="${safeServing}">
+            <button class="btn btn-outline-secondary" onclick="saveStation('${s.id}')">Save</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    window.toggleStation = async (id, isOpen) => {
+      await _supabase.from('stations').update({ is_open: isOpen }).eq('id', id);
+      refreshStations();
+    };
+    window.saveStation = async (id) => {
+      const label = document.getElementById(`stnLabel-${id}`).value;
+      const serving = document.getElementById(`stnServing-${id}`).value;
+      await _supabase.from('stations').update({ label, serving_text: serving }).eq('id', id);
+      refreshStations();
+    };
+
+    // --- AD BANNERS ---
+    window._bannersCache = [];
+    async function refreshBanners() {
+      const { data } = await _supabase.from('banners').select('*').order('sort_order');
+      const list = data || [];
+      window._bannersCache = list;
+      const wrap = document.getElementById('bannersWrap');
+
+      if (list.length === 0) {
+        wrap.innerHTML = '<p class="text-muted small mb-0">No banners uploaded yet.</p>';
+        return;
+      }
+
+      wrap.innerHTML = list.map((b, idx) => `
+        <div class="d-flex align-items-center gap-2 border rounded p-2 mb-2 bg-white">
+          <img src="${b.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">
+          <div class="flex-grow-1"></div>
+          <button class="btn btn-sm btn-light border" onclick="moveBanner(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
+          <button class="btn btn-sm btn-light border" onclick="moveBanner(${idx}, 1)" ${idx === list.length - 1 ? 'disabled' : ''}>↓</button>
+          <span class="msg-toggle ${b.is_active ? 'active' : ''}" title="Active on hub/reg desk" onclick="toggleBanner('${b.id}', ${!b.is_active})">👁️</span>
+          <button class="btn btn-sm text-danger border-0" onclick="deleteBanner('${b.id}', '${b.storage_path}')">X</button>
+        </div>
+      `).join('');
+    }
+
+    window.uploadBanner = async () => {
+      const fileInput = document.getElementById('bannerFile');
+      const file = fileInput.files[0];
+      if (!file) { alert('Choose an image first'); return; }
+
+      const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
+      const path = `${Date.now()}-${safeName}`;
+
+      const { error: upErr } = await _supabase.storage.from('banners').upload(path, file);
+      if (upErr) { alert('Upload failed: ' + upErr.message); return; }
+
+      const { data: pub } = _supabase.storage.from('banners').getPublicUrl(path);
+      const maxOrder = (window._bannersCache || []).reduce((m, b) => Math.max(m, b.sort_order || 0), 0);
+
+      const { error: insErr } = await _supabase.from('banners').insert([{
+        image_url: pub.publicUrl,
+        storage_path: path,
+        is_active: true,
+        sort_order: maxOrder + 1
+      }]);
+      if (insErr) alert('Save failed: ' + insErr.message);
+
+      fileInput.value = '';
+      refreshBanners();
+    };
+
+    window.toggleBanner = async (id, val) => {
+      await _supabase.from('banners').update({ is_active: val }).eq('id', id);
+      refreshBanners();
+    };
+
+    window.deleteBanner = async (id, path) => {
+      if (!confirm('Delete this banner?')) return;
+      await _supabase.storage.from('banners').remove([path]);
+      await _supabase.from('banners').delete().eq('id', id);
+      refreshBanners();
+    };
+
+    window.moveBanner = async (idx, dir) => {
+      const list = window._bannersCache || [];
+      const otherIdx = idx + dir;
+      if (otherIdx < 0 || otherIdx >= list.length) return;
+      const a = list[idx], b = list[otherIdx];
+      await _supabase.from('banners').update({ sort_order: b.sort_order }).eq('id', a.id);
+      await _supabase.from('banners').update({ sort_order: a.sort_order }).eq('id', b.id);
+      refreshBanners();
+    };
 
     document.getElementById('newDate').valueAsDate = new Date();
     checkUser();

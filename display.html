@@ -14,8 +14,8 @@
   <div class="split-screen">
     <div class="col-map">
       <div class="map-frame">
-        <img src="map.jpg" class="map-img" alt="Floor Map">
-        <div id="mapPointer" class="map-pointer"></div>
+        <img id="mapCarouselA" class="map-img" alt="">
+        <img id="mapCarouselB" class="map-img" alt="">
       </div>
       <div class="qr-section">
         <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://YOUR-SITE.web.app" class="qr-img">
@@ -24,31 +24,61 @@
     </div>
 
     <div class="col-list">
-      <div class="header-gold">ALTERNATE LIST</div>
+      <div class="header-gold" id="listHeader">ALTERNATE LIST</div>
       <div id="tvList" style="width: 100%;"></div>
+      <div class="tv-page-dots" id="tvPageDots"></div>
     </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/supabase-config.js"></script>
+  <script src="js/ticker.js"></script>
   <script>
-    // 1. Load Tournaments
+    // 1. Load Tournaments - shown 4 at a time. If there are more, it
+    // rotates through pages rather than shrinking text to cram them all
+    // in, so it always stays a comfortable, readable size.
+    const TV_PAGE_SIZE = 4;
+    let tvTournaments = [];
+    let tvPageIndex = 0;
+    let tvPageTimer = null;
+
     async function loadTV() {
       const { data } = await _supabase.from('tournaments').select('*').eq('is_active', true).order('created_at');
-      const container = document.getElementById('tvList');
-      
-      if (!data || data.length === 0) {
-        container.innerHTML = '<div class="tourn-title" style="color:#555">NO ACTIVE EVENTS</div>';
+      tvTournaments = data || [];
+      tvPageIndex = 0;
+
+      if (tvPageTimer) { clearInterval(tvPageTimer); tvPageTimer = null; }
+
+      if (tvTournaments.length === 0) {
+        document.getElementById('tvPageDots').innerHTML = '';
+        await renderUpcomingScheduleTV(document.getElementById('tvList'));
         return;
       }
 
-      container.innerHTML = data.map(t => {
+      document.getElementById('listHeader').textContent = 'ALTERNATE LIST';
+      renderTVPage();
+
+      const totalPages = Math.ceil(tvTournaments.length / TV_PAGE_SIZE);
+      if (totalPages > 1) {
+        tvPageTimer = setInterval(() => {
+          tvPageIndex = (tvPageIndex + 1) % totalPages;
+          renderTVPage();
+        }, 8000);
+      }
+    }
+
+    function renderTVPage() {
+      const container = document.getElementById('tvList');
+      const start = tvPageIndex * TV_PAGE_SIZE;
+      const pageItems = tvTournaments.slice(start, start + TV_PAGE_SIZE);
+
+      container.innerHTML = pageItems.map(t => {
         let statusHtml = "";
-        
-        if (t.status_mode === 'OPEN') statusHtml = `<span class="text-success">IMMEDIATE SEATING</span>`;
-        else if (t.status_mode === 'ALL') statusHtml = `<span class="text-danger">ALL ALTERNATES</span>`;
-        else if (t.status_mode === 'BREAK') statusHtml = `<span class="text-info">AFTER BREAK: #${t.current_alt_number}</span>`;
-        else statusHtml = `ALTS UP TO <span class="text-warning">#${t.current_alt_number}</span>`;
+
+        if (t.status_mode === 'OPEN') statusHtml = `<span class="stat-success">IMMEDIATE SEATING</span>`;
+        else if (t.status_mode === 'ALL') statusHtml = `<span class="stat-danger">ALL ALTERNATES</span>`;
+        else if (t.status_mode === 'BREAK') statusHtml = `<span class="stat-info">AFTER BREAK: #${t.current_alt_number}</span>`;
+        else statusHtml = `ALTS UP TO <span class="stat-gold">#${t.current_alt_number}</span>`;
 
         return `
         <div class="tourn-item">
@@ -57,6 +87,117 @@
           <div class="tourn-status">${statusHtml}</div>
         </div>`;
       }).join('');
+
+      const totalPages = Math.ceil(tvTournaments.length / TV_PAGE_SIZE);
+      const dotsEl = document.getElementById('tvPageDots');
+      dotsEl.innerHTML = totalPages > 1
+        ? Array.from({ length: totalPages }, (_, i) => `<span class="tv-page-dot ${i === tvPageIndex ? 'active' : ''}"></span>`).join('')
+        : '';
+
+      fitTVList();
+    }
+
+    // 1a. Safety net: with only 4 events per page this should rarely be
+    // needed, but if a couple of names are unusually long it nudges the
+    // text down just enough to avoid clipping, rather than overflowing.
+    // Sets inline pixel sizes directly rather than relying on a CSS
+    // variable main.css needs to define, so it keeps working even if
+    // this file and main.css ever drift out of sync.
+    //
+    // Important: this measures the actual content elements (header,
+    // tvList, dots) directly, NOT .col-list's own scrollHeight. Because
+    // .col-list is itself a flex container with a fixed height, its
+    // scrollHeight was found to always equal its clientHeight regardless
+    // of how much its content actually shrank - comparing against it
+    // never detected a genuine reduction, and the loop shrank text
+    // pointlessly all the way to the floor.
+    function fitTVList() {
+      const colList = document.querySelector('.col-list');
+      const tvList = document.getElementById('tvList');
+      const header = document.querySelector('.header-gold');
+      const dots = document.getElementById('tvPageDots');
+      if (!colList || !tvList) return;
+
+      const vh = window.innerHeight / 100;
+
+      const titles = tvList.querySelectorAll('.tourn-title');
+      const infos = tvList.querySelectorAll('.tourn-info');
+      const statuses = tvList.querySelectorAll('.tourn-status');
+      const items = tvList.querySelectorAll('.tourn-item');
+
+      const dateHeaders = tvList.querySelectorAll('.schedule-date-header');
+      const schedItems = tvList.querySelectorAll('.schedule-item');
+      const schedNames = tvList.querySelectorAll('.schedule-item .name');
+      const schedMetas = tvList.querySelectorAll('.schedule-item .meta');
+
+      if (items.length === 0 && schedItems.length === 0) return;
+
+      function applyScale(scale) {
+        if (items.length > 0) {
+          titles.forEach(el => { el.style.fontSize = (5.5 * vh * scale) + 'px'; el.style.marginBottom = (0.6 * vh * scale) + 'px'; });
+          infos.forEach(el => { el.style.fontSize = (2 * vh * scale) + 'px'; el.style.marginBottom = (0.6 * vh * scale) + 'px'; });
+          statuses.forEach(el => el.style.fontSize = (4.5 * vh * scale) + 'px');
+          items.forEach(el => { el.style.marginBottom = (2.5 * vh * scale) + 'px'; el.style.paddingBottom = (0.6 * vh * scale) + 'px'; });
+        } else {
+          dateHeaders.forEach(el => { el.style.fontSize = (3 * vh * scale) + 'px'; el.style.margin = (3 * vh * scale) + 'px 0 ' + (1.5 * vh * scale) + 'px'; });
+          schedItems.forEach(el => { el.style.padding = (1.5 * vh * scale) + 'px 2vh'; el.style.marginBottom = (1.5 * vh * scale) + 'px'; });
+          schedNames.forEach(el => el.style.fontSize = (3.2 * vh * scale) + 'px');
+          schedMetas.forEach(el => { el.style.fontSize = (2 * vh * scale) + 'px'; el.style.marginTop = (0.5 * vh * scale) + 'px'; });
+        }
+      }
+
+      function measureContentHeight() {
+        return (header ? header.offsetHeight : 0) + tvList.scrollHeight + (dots ? dots.offsetHeight : 0);
+      }
+
+      const colStyle = getComputedStyle(colList);
+      const paddingV = (parseFloat(colStyle.paddingTop) || 0) + (parseFloat(colStyle.paddingBottom) || 0);
+      const availableHeight = colList.clientHeight - paddingV;
+
+      let scale = 1;
+      applyScale(scale);
+
+      let guard = 0;
+      while (measureContentHeight() > availableHeight && scale > 0.15 && guard < 80) {
+        scale -= 0.02;
+        applyScale(scale);
+        guard++;
+      }
+    }
+
+    // 1b. Upcoming schedule fallback (shown when nothing is live)
+    async function renderUpcomingScheduleTV(container) {
+      const today = new Date().toISOString().split('T')[0];
+      const { data } = await _supabase.from('tournaments').select('*')
+        .eq('is_active', false)
+        .gte('tournament_date', today)
+        .order('tournament_date')
+        .order('start_time');
+
+      const rows = data || [];
+      document.getElementById('listHeader').textContent = rows.length ? 'UPCOMING EVENTS' : 'ALTERNATE LIST';
+
+      if (rows.length === 0) {
+        container.innerHTML = '<div class="tourn-title" style="color:#555">NO ACTIVE EVENTS</div>';
+        return;
+      }
+
+      const groups = {};
+      rows.forEach(t => { (groups[t.tournament_date] = groups[t.tournament_date] || []).push(t); });
+
+      const dateFmt = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+
+      container.innerHTML = Object.keys(groups).map(date => `
+        <div class="schedule-date-header">${dateFmt(date)}</div>
+        ${groups[date].map(t => `
+          <div class="schedule-item">
+            <div class="name">${t.name}</div>
+            <div class="meta">${t.start_time || ''}${t.location ? ' // ' + t.location : ''}</div>
+          </div>
+        `).join('')}
+      `).join('');
+
+      fitTVList();
     }
 
     // 2. Load Ticker Messages
@@ -67,8 +208,9 @@ async function loadTicker() {
   const tickerBox = document.getElementById('tickerText');
   const wrap = document.querySelector('.ticker-wrap');
   const split = document.querySelector('.split-screen');
-  
-  if (!data || data.length === 0) {
+  const list = data || [];
+
+  if (list.length === 0) {
     wrap.style.display = 'none';
     split.style.marginTop = '0';
     split.style.height = '100vh';
@@ -76,27 +218,80 @@ async function loadTicker() {
     wrap.style.display = 'flex';
     split.style.marginTop = '6vh';
     split.style.height = '94vh';
-    
-    const baseString = data.map(m => m.text).join(' &nbsp;&nbsp;&nbsp;***&nbsp;&nbsp;&nbsp; ');
-    const repeatedString = Array(20).fill(baseString).join(' &nbsp;&nbsp;&nbsp;***&nbsp;&nbsp;&nbsp; ');
-
-    tickerBox.innerHTML = `<div class="ticker-item">${repeatedString}</div>`;
-    
-    // --- SPEED FIX ---
-    const pixelsPerSecond = 100; // Same speed as homepage
-    const totalWidth = tickerBox.scrollWidth;
-    const duration = totalWidth / pixelsPerSecond;
-    tickerBox.style.animationDuration = `${duration}s`;
+    renderSeamlessTicker(tickerBox, list.map(m => m.text), 100);
   }
 }
 
-    _supabase.channel('public').on('postgres_changes', {event:'*', schema:'public'}, () => {
-      loadTV();
-      loadTicker();
-    }).subscribe();
+    // 3. Left-panel carousel (floor plans, ads, whatever you like).
+    // Each image has its own duration; a single image just shows
+    // statically. Falls back gracefully if the table is empty.
+    let mapImages = [];
+    let mapIndex = 0;
+    let mapTimer = null;
+    let mapActiveIsA = true;
 
-    loadTV();
-    loadTicker();
+    async function loadMapCarousel() {
+      const { data } = await _supabase.from('display_carousel_images').select('*').eq('is_active', true).order('sort_order');
+      mapImages = data || [];
+      mapIndex = 0;
+      if (mapTimer) clearTimeout(mapTimer);
+
+      const imgA = document.getElementById('mapCarouselA');
+      const imgB = document.getElementById('mapCarouselB');
+
+      if (mapImages.length === 0) {
+        imgA.classList.remove('active');
+        imgB.classList.remove('active');
+        imgA.removeAttribute('src');
+        imgB.removeAttribute('src');
+        return;
+      }
+
+      imgA.src = mapImages[0].image_url;
+      imgA.classList.add('active');
+      imgB.classList.remove('active');
+      mapActiveIsA = true;
+
+      if (mapImages.length > 1) scheduleNextMapSlide();
+    }
+
+    function scheduleNextMapSlide() {
+      const current = mapImages[mapIndex];
+      const seconds = (current && current.duration_seconds) || 10;
+
+      mapTimer = setTimeout(() => {
+        mapIndex = (mapIndex + 1) % mapImages.length;
+        const next = mapImages[mapIndex];
+        const showEl = document.getElementById(mapActiveIsA ? 'mapCarouselB' : 'mapCarouselA');
+        const hideEl = document.getElementById(mapActiveIsA ? 'mapCarouselA' : 'mapCarouselB');
+
+        showEl.src = next.image_url;
+        showEl.classList.add('active');
+        hideEl.classList.remove('active');
+        mapActiveIsA = !mapActiveIsA;
+
+        scheduleNextMapSlide();
+      }, seconds * 1000);
+    }
+
+    // --- INIT + REALTIME ---
+    // Ticker must run first: it sets .split-screen's height/margin
+    // depending on whether there are messages, and the tournament list
+    // needs that final size settled before it measures itself against
+    // it. Doing this out of order was why the list wasn't shrinking
+    // correctly - it was fitting against a taller box than what was
+    // actually visible.
+    async function refreshDisplay() {
+      await loadTicker();
+      await loadTV();
+      await loadMapCarousel();
+    }
+
+    _supabase.channel('public').on('postgres_changes', {event:'*', schema:'public'}, refreshDisplay).subscribe();
+
+    window.addEventListener('resize', () => fitTVList());
+
+    refreshDisplay();
   </script>
 </body>
 </html>

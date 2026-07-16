@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Goliath Reg Desk</title>
+  <link rel="stylesheet" href="main.css">
+</head>
+<body class="regdesk-body">
+
+  <!-- IDLE SCREEN: shown when all stations are closed. Rotates through
+       the images set in admin, each with its own duration. Two alternating
+       <img> elements crossfade between slides. -->
+  <div class="regdesk-idle" id="idleScreen" style="display:none;">
+    <img id="idleImgA" class="idle-slide" alt="">
+    <img id="idleImgB" class="idle-slide" alt="">
+    <div class="regdesk-idle-badge" id="idleBadgeText">GOLIATH</div>
+    <img class="regdesk-idle-badge-img" id="idleBadgeImg" alt="" style="display:none;">
+  </div>
+
+  <!-- MAIN SCREEN: shown whenever at least one station is open -->
+  <div class="regdesk-wrap" id="mainScreen">
+    <div class="regdesk-bg-default"></div>
+    <div class="regdesk-bg-image" id="bgImage"></div>
+    <div class="regdesk-watermark" id="watermark">GOLIATH</div>
+
+    <div class="regdesk-header">
+      <div class="regdesk-logo" id="headerLogoText">GOLIATH</div>
+      <img class="regdesk-logo-img" id="headerLogoImg" alt="" style="display:none;">
+      <div class="header-flight" id="spotlightName"></div>
+      <div class="header-status" id="spotlightStatus"></div>
+      <div class="header-dots" id="spotlightDots"></div>
+    </div>
+
+    <div class="regdesk-stations-row">
+      <div class="regdesk-stations" id="stationsRow"></div>
+      <div class="regdesk-empty-slot"></div>
+    </div>
+
+    <div class="regdesk-ticker">
+      <div class="ticker-content" id="regdeskTicker"></div>
+    </div>
+  </div>
+
+  <button class="regdesk-fullscreen-btn" id="fsBtn" onclick="toggleFullscreen()">⛶ fullscreen</button>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-config.js"></script>
+  <script src="js/ticker.js"></script>
+  <script>
+    // --- FULLSCREEN TOGGLE (small corner button, low-opacity) ---
+    // For unattended signage, running Chrome in --kiosk mode pointed at
+    // this URL is more reliable than the in-page Fullscreen API (kiosk
+    // survives reboots without a click). This button is just a manual
+    // fallback if you're testing in a normal browser tab.
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+      else document.exitFullscreen();
+    }
+
+    // --- IDLE / ACTIVE SWITCHING ---
+    function setIdle(isIdle) {
+      document.getElementById('idleScreen').style.display = isIdle ? 'block' : 'none';
+      document.getElementById('mainScreen').style.display = isIdle ? 'none' : 'flex';
+    }
+
+    // --- STATIONS ---
+    async function loadStations() {
+      const { data } = await _supabase.from('stations').select('*').order('station_number');
+      const row = document.getElementById('stationsRow');
+      const stations = data || [];
+
+      row.innerHTML = stations.map(s => `
+        <div class="station-card">
+          <div class="station-badge ${s.is_open ? '' : 'closed'}">${s.is_open ? 'OPEN' : 'CLOSED'}</div>
+          <div class="station-serving ${s.is_open ? '' : 'closed'}">${s.is_open ? (s.serving_text || '') : (s.label || ('Station ' + s.station_number))}</div>
+        </div>
+      `).join('');
+
+      const allClosed = stations.length > 0 && stations.every(s => !s.is_open);
+      setIdle(allClosed);
+    }
+
+    // --- HEADER STATUS: flight name + alt status, inline in the header row.
+    // Rotates through all active events every 5s if there's more than one. ---
+    let spotlightTournaments = [];
+    let spotlightIndex = 0;
+    let spotlightTimer = null;
+
+    async function loadAlts() {
+      const { data } = await _supabase.from('tournaments').select('*').eq('is_active', true).order('created_at');
+      spotlightTournaments = data || [];
+      spotlightIndex = 0;
+      renderSpotlight();
+
+      if (spotlightTimer) clearInterval(spotlightTimer);
+      if (spotlightTournaments.length > 1) {
+        spotlightTimer = setInterval(() => {
+          spotlightIndex = (spotlightIndex + 1) % spotlightTournaments.length;
+          renderSpotlight();
+        }, 5000);
+      }
+    }
+
+    function renderSpotlight() {
+      const nameEl = document.getElementById('spotlightName');
+      const statusEl = document.getElementById('spotlightStatus');
+      const dotsEl = document.getElementById('spotlightDots');
+
+      if (spotlightTournaments.length === 0) {
+        nameEl.textContent = 'No Active Events';
+        statusEl.textContent = '';
+        statusEl.className = 'header-status empty';
+        dotsEl.innerHTML = '';
+        return;
+      }
+
+      const t = spotlightTournaments[spotlightIndex];
+      let statusText = '', cls = '';
+      if (t.status_mode === 'OPEN') { statusText = 'Open Seating'; cls = 'success'; }
+      else if (t.status_mode === 'ALL') { statusText = 'All Alternates'; cls = 'danger'; }
+      else if (t.status_mode === 'BREAK') { statusText = `Up To #${t.current_alt_number}`; cls = 'info'; }
+      else { statusText = `Up To #${t.current_alt_number}`; cls = 'gold'; }
+
+      nameEl.textContent = t.name;
+      statusEl.textContent = statusText;
+      statusEl.className = `header-status ${cls}`;
+
+      dotsEl.innerHTML = spotlightTournaments.length > 1
+        ? spotlightTournaments.map((_, i) => `<span class="header-dot ${i === spotlightIndex ? 'active' : ''}"></span>`).join('')
+        : '';
+    }
+
+    // --- TICKER BANNER: its own independent toggle (show_on_regdesk),
+    // separate from the Website and Alt Desk tickers. ---
+    async function loadTicker() {
+      const { data } = await _supabase.from('messages').select('*').eq('show_on_regdesk', true).order('created_at');
+      const tickerEl = document.getElementById('regdeskTicker');
+      renderSeamlessTicker(tickerEl, (data || []).map(m => m.text), 100);
+    }
+
+    // --- LIVE BACKGROUND: shown behind the header+stations while at
+    // least one station is open. Falls back to the default gradient
+    // when unset. Design it at 1920x384 (native resolution) for a
+    // clean full-bleed fit with no cropping. ---
+    async function loadBackground() {
+      const { data } = await _supabase.from('regdesk_settings').select('*').eq('id', 1).maybeSingle();
+
+      const bgImage = document.getElementById('bgImage');
+      const watermark = document.getElementById('watermark');
+      const liveUrl = data && data.background_url;
+      if (liveUrl) {
+        bgImage.style.backgroundImage = `url('${liveUrl}')`;
+        watermark.style.display = 'none';
+      } else {
+        bgImage.style.backgroundImage = 'none';
+        watermark.style.display = 'flex';
+      }
+    }
+
+    // --- IDLE ROTATION: shown full-bleed when all stations are closed.
+    // Cycles through every active image in regdesk_idle_images, each
+    // for its own configured duration. A single image just shows
+    // statically with no cycling. Two alternating <img> elements
+    // crossfade between slides. ---
+    let idleImages = [];
+    let idleIndex = 0;
+    let idleTimer = null;
+    let idleActiveIsA = true;
+
+    async function loadIdleImages() {
+      const { data } = await _supabase.from('regdesk_idle_images').select('*').eq('is_active', true).order('sort_order');
+      idleImages = data || [];
+      idleIndex = 0;
+      if (idleTimer) clearTimeout(idleTimer);
+
+      const imgA = document.getElementById('idleImgA');
+      const imgB = document.getElementById('idleImgB');
+
+      if (idleImages.length === 0) {
+        imgA.classList.remove('active');
+        imgB.classList.remove('active');
+        imgA.removeAttribute('src');
+        imgB.removeAttribute('src');
+        return;
+      }
+
+      imgA.src = idleImages[0].image_url;
+      imgA.classList.add('active');
+      imgB.classList.remove('active');
+      idleActiveIsA = true;
+
+      if (idleImages.length > 1) scheduleNextIdleSlide();
+    }
+
+    function scheduleNextIdleSlide() {
+      const current = idleImages[idleIndex];
+      const seconds = (current && current.duration_seconds) || 8;
+
+      idleTimer = setTimeout(() => {
+        idleIndex = (idleIndex + 1) % idleImages.length;
+        const next = idleImages[idleIndex];
+        const showEl = document.getElementById(idleActiveIsA ? 'idleImgB' : 'idleImgA');
+        const hideEl = document.getElementById(idleActiveIsA ? 'idleImgA' : 'idleImgB');
+
+        showEl.src = next.image_url;
+        showEl.classList.add('active');
+        hideEl.classList.remove('active');
+        idleActiveIsA = !idleActiveIsA;
+
+        scheduleNextIdleSlide();
+      }, seconds * 1000);
+    }
+
+    // --- SITE LOGO: shared across the website and this video wall.
+    // Falls back to the "GOLIATH" text badge wherever it's unset. ---
+    async function loadSiteLogo() {
+      const { data } = await _supabase.from('site_settings').select('*').eq('id', 1).maybeSingle();
+      const url = data && data.logo_url;
+
+      const headerText = document.getElementById('headerLogoText');
+      const headerImg = document.getElementById('headerLogoImg');
+      const idleText = document.getElementById('idleBadgeText');
+      const idleImg = document.getElementById('idleBadgeImg');
+
+      if (url) {
+        headerImg.src = url; headerImg.style.display = ''; headerText.style.display = 'none';
+        idleImg.src = url; idleImg.style.display = ''; idleText.style.display = 'none';
+      } else {
+        headerImg.style.display = 'none'; headerText.style.display = '';
+        idleImg.style.display = 'none'; idleText.style.display = '';
+      }
+    }
+
+    // --- INIT + REALTIME ---
+    _supabase.channel('public').on('postgres_changes', { event: '*', schema: 'public' }, () => {
+      loadStations();
+      loadAlts();
+      loadIdleImages();
+      loadBackground();
+      loadTicker();
+      loadSiteLogo();
+    }).subscribe();
+
+    loadStations();
+    loadAlts();
+    loadIdleImages();
+    loadBackground();
+    loadTicker();
+    loadSiteLogo();
+  </script>
+</body>
+</html>

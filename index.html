@@ -17,11 +17,14 @@
 
   <div class="container py-4">
     <div class="text-center mb-4 border-bottom border-secondary pb-3">
-      <h2 style="color:var(--text-gold); font-weight:900; letter-spacing:1px;">GOLIATH HUB</h2>
+      <h2 id="hubLogoText" style="color:var(--text-gold); font-weight:900; letter-spacing:1px;">GOLIATH HUB</h2>
+      <img id="hubLogoImg" alt="" style="display:none; max-height:60px; margin-bottom:8px;">
       <p class="text-secondary small">LIVE TOURNAMENT TRACKER</p>
     </div>
 
     <div id="tournamentList"></div>
+
+    <div id="bannerCarousel" class="banner-carousel" style="display:none;"></div>
 
     <div class="flat-card mt-5">
       <h4 class="text-white mb-3">Find Your Table</h4>
@@ -40,6 +43,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/@panzoom/panzoom/dist/panzoom.min.js"></script>
   <script src="js/supabase-config.js"></script>
+  <script src="js/ticker.js"></script>
   
   <script>
     // --- 1. LOAD TICKER ---
@@ -47,22 +51,15 @@
       const { data } = await _supabase.from('messages').select('*').eq('show_on_home', true).order('created_at');
       const tickerBox = document.getElementById('tickerText');
       const wrap = document.querySelector('.ticker-wrap');
-      
-      if (!data || data.length === 0) {
+      const list = data || [];
+
+      if (list.length === 0) {
         wrap.style.display = 'none';
         document.body.style.paddingTop = '20px';
       } else {
         wrap.style.display = 'flex';
         document.body.style.paddingTop = '8vh';
-        
-        const baseString = data.map(m => m.text).join(' &nbsp;&nbsp;&nbsp;***&nbsp;&nbsp;&nbsp; ');
-        const repeatedString = Array(20).fill(baseString).join(' &nbsp;&nbsp;&nbsp;***&nbsp;&nbsp;&nbsp; ');
-        tickerBox.innerHTML = `<div class="ticker-item">${repeatedString}</div>`;
-        
-        const pixelsPerSecond = 100; 
-        const totalWidth = tickerBox.scrollWidth;
-        const duration = totalWidth / pixelsPerSecond;
-        tickerBox.style.animationDuration = `${duration}s`;
+        renderSeamlessTicker(tickerBox, list.map(m => m.text), 100);
       }
     }
 
@@ -72,12 +69,7 @@
       const list = document.getElementById('tournamentList');
 
       if (!data || data.length === 0) {
-        list.innerHTML = `
-          <div class="text-center py-5 text-secondary">
-            <h3 class="fw-bold" style="opacity:0.5;">NO ACTIVE EVENTS</h3>
-            <p>Please check back later.</p>
-          </div>
-        `;
+        await renderUpcomingSchedule(list);
         return;
       }
       
@@ -112,6 +104,93 @@
           </div>
         </div>
       `}).join('');
+    }
+
+    // --- 2b. UPCOMING SCHEDULE (shown when nothing is live) ---
+    async function renderUpcomingSchedule(container) {
+      const today = new Date().toISOString().split('T')[0];
+      const { data } = await _supabase.from('tournaments').select('*')
+        .eq('is_active', false)
+        .gte('tournament_date', today)
+        .order('tournament_date')
+        .order('start_time');
+
+      const rows = data || [];
+
+      if (rows.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-5 text-secondary">
+            <h3 class="fw-bold" style="opacity:0.5;">NO ACTIVE EVENTS</h3>
+            <p>Please check back later.</p>
+          </div>
+        `;
+        return;
+      }
+
+      const groups = {};
+      rows.forEach(t => { (groups[t.tournament_date] = groups[t.tournament_date] || []).push(t); });
+
+      const dateFmt = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+
+      container.innerHTML = `
+        <div class="text-center pb-3 text-secondary">
+          <h4 class="fw-bold" style="opacity:0.6;">NO LIVE EVENTS RIGHT NOW</h4>
+          <p class="small mb-0">Here's what's coming up</p>
+        </div>
+      ` + Object.keys(groups).map(date => `
+        <div class="schedule-date-header">${dateFmt(date)}</div>
+        ${groups[date].map(t => `
+          <div class="schedule-item">
+            <div class="name">${t.name}</div>
+            <div class="meta">${t.start_time || ''}${t.location ? ' // ' + t.location : ''}</div>
+          </div>
+        `).join('')}
+      `).join('');
+    }
+
+    // --- 2c. AD BANNER CAROUSEL ---
+    let bannerRotateTimer = null;
+    async function loadBannerCarousel() {
+      const { data } = await _supabase.from('banners').select('*').eq('is_active', true).order('sort_order');
+      const box = document.getElementById('bannerCarousel');
+      const list = data || [];
+
+      if (bannerRotateTimer) clearInterval(bannerRotateTimer);
+
+      if (list.length === 0) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+        return;
+      }
+
+      box.style.display = 'block';
+      box.innerHTML = list.map((b, i) => `<div class="banner-slide ${i === 0 ? 'active' : ''}"><img src="${b.image_url}" alt=""></div>`).join('')
+        + (list.length > 1 ? `<div class="banner-dots">${list.map((_, i) => `<span class="banner-dot ${i === 0 ? 'active' : ''}"></span>`).join('')}</div>` : '');
+
+      if (list.length > 1) {
+        let idx = 0;
+        bannerRotateTimer = setInterval(() => {
+          const slides = box.querySelectorAll('.banner-slide');
+          const dots = box.querySelectorAll('.banner-dot');
+          slides[idx].classList.remove('active'); dots[idx].classList.remove('active');
+          idx = (idx + 1) % slides.length;
+          slides[idx].classList.add('active'); dots[idx].classList.add('active');
+        }, 5000);
+      }
+    }
+
+    // --- 2d. SITE LOGO ---
+    async function loadSiteLogo() {
+      const { data } = await _supabase.from('site_settings').select('*').eq('id', 1).maybeSingle();
+      const url = data && data.logo_url;
+      const text = document.getElementById('hubLogoText');
+      const img = document.getElementById('hubLogoImg');
+
+      if (url) {
+        img.src = url; img.style.display = ''; text.style.display = 'none';
+      } else {
+        img.style.display = 'none'; text.style.display = '';
+      }
     }
 
     // --- 3. INTERACTIVE MAP LOGIC ---
@@ -204,9 +283,11 @@
     window.addEventListener('DOMContentLoaded', initMaps);
 
     // Initial Loaders
-    _supabase.channel('public').on('postgres_changes', {event:'*', schema:'public'}, () => { loadHome(); loadTicker(); }).subscribe();
+    _supabase.channel('public').on('postgres_changes', {event:'*', schema:'public'}, () => { loadHome(); loadTicker(); loadBannerCarousel(); loadSiteLogo(); }).subscribe();
     loadHome();
     loadTicker();
+    loadBannerCarousel();
+    loadSiteLogo();
   </script>
 </body>
 </html>

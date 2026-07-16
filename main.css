@@ -1,6 +1,17 @@
 /* public/main.css */
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap');
 
+/* Without this, an element with height:100% (or any fixed height) PLUS
+   padding renders taller than intended - the padding adds on top of the
+   100% instead of being included within it. That mismatch was the root
+   cause of the Alt Desk tournament list overflow bug: .col-list's own
+   clientHeight was silently ~65px taller than what was actually visible
+   inside its parent, so the auto-fit logic measured against the wrong
+   number. This is standard practice for exactly this reason. */
+* {
+  box-sizing: border-box;
+}
+
 :root {
   --bg-deep: #141026;
   --text-gold: #eebf36;
@@ -124,10 +135,30 @@ body {
 .col-list {
   width: 60%;
   height: 100%;
+  min-height: 0;
   padding: 3vh 3vw;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
+  overflow: hidden;
+}
+
+.tv-page-dots {
+  display: flex;
+  gap: 1.2vh;
+  margin-top: auto;
+  padding-top: 2vh;
+  flex-shrink: 0;
+}
+.tv-page-dot {
+  width: 1.6vh; height: 1.6vh;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+}
+.tv-page-dot.active { background: var(--text-gold); }
+
+#tvList {
+  min-height: 0;
 }
 
 .map-frame {
@@ -143,7 +174,15 @@ body {
   background: rgba(0,0,0,0.2);
   margin-bottom: 10px;
 }
-.map-img { width: 100%; height: 100%; object-fit: contain; }
+.map-img {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity 1s ease;
+}
+.map-img.active { opacity: 1; }
 .qr-img { height: 10vh; width: auto; border: 2px solid white; border-radius: 10px; }
 
 /* TV Text Overrides */
@@ -158,16 +197,26 @@ body {
 }
 
 .split-screen .tourn-item {
-  margin-bottom: 4vh;
-  padding-bottom: 1vh;
+  margin-bottom: 2.5vh;
+  padding-bottom: 0.6vh;
   border-bottom: 1px solid rgba(255,255,255,0.1);
 }
 
-.split-screen .tourn-title { font-size: 7vh; line-height: 0.9; margin-bottom: 1vh; }
-.split-screen .tourn-info { font-size: 2.5vh; font-weight: 700; margin-bottom: 1vh; }
-.split-screen .tourn-status { color: var(--text-gold); font-weight: 900; font-size: 6vh; text-transform: uppercase; line-height: 1; }
+.split-screen .tourn-title { font-size: 5.5vh; line-height: 0.95; margin-bottom: 0.6vh; }
+.split-screen .tourn-info { font-size: 2vh; font-weight: 700; margin-bottom: 0.6vh; }
+.split-screen .tourn-status { font-weight: 900; font-size: 4.5vh; text-transform: uppercase; line-height: 1; }
 
-/* === TICKER STYLES (UPDATED) === */
+/* Status colors - these are plain custom classes (display.html doesn't
+   load Bootstrap, so text-success/text-danger/etc. do nothing there). */
+.stat-success { color: #28a745; }
+.stat-danger { color: #ff4d4d; }
+.stat-info { color: #0dcaf0; }
+.stat-gold { color: var(--text-gold); }
+
+/* === TICKER STYLES (seamless loop, no gap on repeat) ===
+   Rendered via js/ticker.js: two identical segments back-to-back,
+   animated from translateX(0) to translateX(-50%). When it loops,
+   segment two is sitting exactly where segment one started. */
 .ticker-wrap {
   position: fixed;
   top: 0; /* MOVED TO TOP */
@@ -182,27 +231,27 @@ body {
 }
 
 .ticker-content {
-  display: inline-block;
-  white-space: nowrap;
-  padding-left: 100vw; /* Start off-screen */
-  /* We removed the '100s' here. It will be set by JS */
-  animation-name: ticker-scroll;
+  display: flex;
+  width: max-content;
   animation-timing-function: linear;
   animation-iteration-count: infinite;
+  animation-name: ticker-scroll;
 }
 
 .ticker-item {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
   color: #000;
   font-weight: 900;
   font-size: 3vh;
   text-transform: uppercase;
-  margin-right: 10vw;
+  padding-right: 10vw;
 }
 
 @keyframes ticker-scroll {
-  0% { transform: translate3d(0, 0, 0); }
-  100% { transform: translate3d(-100%, 0, 0); }
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
 }
 
 /* === INTERACTIVE MAP STYLES === */
@@ -237,3 +286,331 @@ body {
 @keyframes march {
   to { stroke-dashoffset: -20; }
 }
+
+/* === UPCOMING SCHEDULE / CALENDAR FALLBACK === */
+.schedule-date-header {
+  color: var(--text-gold);
+  text-transform: uppercase;
+  font-weight: 900;
+  letter-spacing: 1px;
+  border-bottom: 1px solid #333;
+  padding-bottom: 6px;
+  margin: 24px 0 12px;
+  font-size: 0.95rem;
+}
+.schedule-date-header:first-child { margin-top: 4px; }
+
+.schedule-item {
+  background: #1e1e2f;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 10px;
+}
+.schedule-item .name {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 1.05rem;
+}
+.schedule-item .meta {
+  color: #aaa;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* TV-sized variant, reuses the same class names inside .split-screen */
+.split-screen .schedule-date-header { font-size: 3vh; margin: 3vh 0 1.5vh; }
+.split-screen .schedule-item { padding: 1.5vh 2vh; margin-bottom: 1.5vh; }
+.split-screen .schedule-item .name { font-size: 3.2vh; }
+.split-screen .schedule-item .meta { font-size: 2vh; margin-top: 0.5vh; }
+
+/* === AD BANNER CAROUSEL (mobile hub) ===
+   Design banners at 1200x400px (3:1) and they'll fill this edge-to-edge
+   with no cropping. */
+.banner-carousel {
+  position: relative;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #333;
+  background: #000;
+  aspect-ratio: 3 / 1;
+  margin-bottom: 20px;
+}
+.banner-slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+.banner-slide.active { opacity: 1; }
+.banner-slide img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.banner-dots {
+  position: absolute;
+  bottom: 8px; left: 0; right: 0;
+  display: flex; justify-content: center; gap: 6px;
+}
+.banner-dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.4); }
+.banner-dot.active { background: var(--text-gold); }
+
+/* === REG DESK VIDEO WALL (1920x384 landscape strip) === */
+body.regdesk-body {
+  margin: 0; padding: 0;
+  width: 100vw; height: 100vh;
+  overflow: hidden;
+  background: #15113a;
+}
+
+.regdesk-wrap {
+  position: relative;
+  width: 100vw; height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Base gradient, visible whenever no custom background image is set */
+.regdesk-bg-default {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: radial-gradient(circle at 12% 15%, #201955 0%, #100c2e 55%, #08061a 100%);
+}
+
+/* Custom background image, set from the admin panel. Design it at
+   1920x384 (the wall's native resolution) so it shows full-bleed with
+   no cropping or repositioning. */
+.regdesk-bg-image {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+}
+
+/* Giant faint watermark for texture; only shown when there's no custom
+   background image (hidden automatically via JS otherwise) */
+.regdesk-watermark {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24vh;
+  font-weight: 900;
+  letter-spacing: 1.2vh;
+  color: rgba(255,255,255,0.03);
+  transform: rotate(-6deg);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* --- Header row: badge + flight name + alt status, all inline --- */
+.regdesk-header {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2vh;
+  height: 38vh;
+  padding: 0 3.5vh;
+  flex-shrink: 0;
+}
+
+.regdesk-logo {
+  background: linear-gradient(135deg, #fff3c4, var(--text-gold));
+  color: #17123a;
+  font-weight: 900;
+  letter-spacing: 2px;
+  font-size: 5.6vh;
+  padding: 1.1vh 2.4vh;
+  border-radius: 0.7vh;
+  box-shadow: 0 0 20px rgba(238,191,54,0.3);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.regdesk-logo-img {
+  height: 22vh;
+  width: auto;
+  max-width: 30vw;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.header-flight {
+  font-size: 10vh;
+  font-weight: 900;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 44vw;
+}
+
+.header-status {
+  font-size: 10vh;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+.header-status.success { color: #28a745; }
+.header-status.danger { color: #ff4d4d; }
+.header-status.info { color: #0dcaf0; }
+.header-status.gold { color: var(--text-gold); }
+.header-status.empty { color: #888; }
+
+.header-dots {
+  display: flex;
+  gap: 0.9vh;
+  margin-left: 0.4vh;
+}
+.header-dot {
+  width: 1.2vh; height: 1.2vh;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.22);
+}
+.header-dot.active { background: var(--text-gold); }
+
+/* --- Stations row: reserves width for 5 slots, but only the first 4 get
+       the boxed panel treatment. The 5th is left empty on purpose so the
+       background shows through there. --- */
+.regdesk-stations-row {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex: 0 0 auto;
+  height: 44vh;
+  margin: 0 3.5vh 1.5vh;
+}
+
+.regdesk-stations {
+  flex: 4;
+  display: flex;
+  border-radius: 1.4vh;
+  background: rgba(8,6,20,0.55);
+  border: 1px solid rgba(255,255,255,0.1);
+  overflow: hidden;
+}
+
+.regdesk-empty-slot {
+  flex: 1;
+}
+
+.station-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid rgba(255,255,255,0.08);
+}
+.station-card:last-child { border-right: none; }
+
+.station-badge {
+  font-size: 11vh;
+  font-weight: 900;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  line-height: 1;
+  color: #fff;
+}
+.station-badge.closed { color: #9a96b8; }
+
+.station-serving {
+  font-size: 4.2vh;
+  font-weight: 700;
+  color: #28a745;
+  margin-top: 0.8vh;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.15;
+  min-height: 3.6vh;
+}
+.station-serving.closed { color: #8781a0; }
+
+/* --- Ticker banner: big lower area for scrolling messages. Uses its own
+       independent toggle (show_on_regdesk), separate from the Website
+       and Alt Desk tickers. --- */
+.regdesk-ticker {
+  position: relative;
+  z-index: 3;
+  flex: 1;
+  min-height: 0;
+  margin: 0 3.5vh 2.5vh;
+  border-radius: 1.2vh;
+  background: rgba(8,6,20,0.4);
+  border: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.regdesk-ticker .ticker-item {
+  color: #fff;
+  font-weight: 800;
+  font-size: 5vh;
+  padding-right: 8vw;
+}
+
+.regdesk-idle {
+  position: fixed;
+  inset: 0;
+  width: 100vw; height: 100vh;
+  background: radial-gradient(circle at 12% 15%, #201955 0%, #100c2e 55%, #08061a 100%);
+  overflow: hidden;
+}
+.idle-slide {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+.idle-slide.active { opacity: 1; }
+
+.regdesk-idle-badge {
+  position: absolute;
+  bottom: 2vh; right: 2.5vh;
+  z-index: 5;
+  background: linear-gradient(135deg, #fff3c4, var(--text-gold));
+  color: #17123a;
+  font-weight: 900;
+  letter-spacing: 2px;
+  font-size: 2.4vh;
+  padding: 0.6vh 1.6vh;
+  border-radius: 0.6vh;
+  box-shadow: 0 0 20px rgba(238,191,54,0.35);
+}
+
+.regdesk-idle-badge-img {
+  position: absolute;
+  bottom: 2vh; right: 2.5vh;
+  z-index: 5;
+  height: 9vh;
+  width: auto;
+  max-width: 30vw;
+  object-fit: contain;
+}
+
+.regdesk-fullscreen-btn {
+  position: fixed;
+  top: 1vh; right: 1vh;
+  opacity: 0.12;
+  background: transparent;
+  border: 1px solid #666;
+  color: #999;
+  font-size: 1.6vh;
+  padding: 0.4vh 1vh;
+  border-radius: 4px;
+  z-index: 999;
+  cursor: pointer;
+}
+.regdesk-fullscreen-btn:hover { opacity: 0.9; }
