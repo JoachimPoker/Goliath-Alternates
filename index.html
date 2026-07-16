@@ -132,12 +132,7 @@
 
       const dateFmt = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 
-      container.innerHTML = `
-        <div class="text-center pb-3 text-secondary">
-          <h4 class="fw-bold" style="opacity:0.6;">NO LIVE EVENTS RIGHT NOW</h4>
-          <p class="small mb-0">Here's what's coming up</p>
-        </div>
-      ` + Object.keys(groups).map(date => `
+      const renderDay = (date) => `
         <div class="schedule-date-header">${dateFmt(date)}</div>
         ${groups[date].map(t => `
           <div class="schedule-item">
@@ -145,8 +140,43 @@
             <div class="meta">${t.start_time || ''}${t.location ? ' // ' + t.location : ''}</div>
           </div>
         `).join('')}
-      `).join('');
+      `;
+
+      // Long festivals (a dozen+ days of events) make this unreadable if
+      // every day renders at once - show the next couple of days, and
+      // let people expand the rest if they want to plan further ahead.
+      const VISIBLE_DAYS = 2;
+      const dates = Object.keys(groups);
+      const visibleDates = dates.slice(0, VISIBLE_DAYS);
+      const hiddenDates = dates.slice(VISIBLE_DAYS);
+
+      let html = `
+        <div class="text-center pb-3 text-secondary">
+          <h4 class="fw-bold" style="opacity:0.6;">NO LIVE EVENTS RIGHT NOW</h4>
+          <p class="small mb-0">Here's what's coming up</p>
+        </div>
+      ` + visibleDates.map(renderDay).join('');
+
+      if (hiddenDates.length > 0) {
+        const showLabel = `Show Full Schedule (+${hiddenDates.length} more day${hiddenDates.length === 1 ? '' : 's'})`;
+        html += `<div id="moreScheduleDays" style="display:none;">${hiddenDates.map(renderDay).join('')}</div>`;
+        html += `
+          <button id="moreScheduleBtn" class="btn btn-outline-light w-100 mt-2 mb-4" data-show-label="${showLabel}" onclick="toggleMoreSchedule()">
+            ${showLabel}
+          </button>
+        `;
+      }
+
+      container.innerHTML = html;
     }
+
+    window.toggleMoreSchedule = () => {
+      const more = document.getElementById('moreScheduleDays');
+      const btn = document.getElementById('moreScheduleBtn');
+      const isHidden = more.style.display === 'none';
+      more.style.display = isHidden ? 'block' : 'none';
+      btn.textContent = isHidden ? 'Show Fewer Days' : btn.dataset.showLabel;
+    };
 
     // --- 2c. AD BANNER CAROUSEL ---
     let bannerRotateTimer = null;
