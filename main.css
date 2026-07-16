@@ -345,6 +345,7 @@ body {
   transition: opacity 0.8s ease;
 }
 .banner-slide.active { opacity: 1; }
+.banner-slide a { display: block; width: 100%; height: 100%; }
 .banner-slide img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .banner-dots {
   position: absolute;

@@ -136,8 +136,12 @@
         <h4 class="mb-3">🖼️ Ad Banners</h4>
         <div class="card p-3 shadow-sm border-0 bg-white">
           <p class="text-muted small mb-2">Rotating carousel on the mobile website only. Design at <strong>1200x400px (3:1)</strong> so they fill the space edge-to-edge with no cropping.</p>
-          <div class="input-group mb-3">
+          <div class="input-group mb-2">
             <input type="file" id="bannerFile" class="form-control" accept="image/*">
+          </div>
+          <div class="input-group mb-3">
+            <span class="input-group-text">Link</span>
+            <input type="url" id="bannerLink" class="form-control" placeholder="https:// (optional - tap the banner opens this)">
             <button onclick="uploadBanner()" class="btn btn-primary">Upload</button>
           </div>
           <div id="bannersWrap"></div>
@@ -705,19 +709,27 @@
       }
 
       wrap.innerHTML = list.map((b, idx) => `
-        <div class="d-flex align-items-center gap-2 border rounded p-2 mb-2 bg-white">
-          <img src="${b.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">
-          <div class="flex-grow-1"></div>
-          <button class="btn btn-sm btn-light border" onclick="moveBanner(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
-          <button class="btn btn-sm btn-light border" onclick="moveBanner(${idx}, 1)" ${idx === list.length - 1 ? 'disabled' : ''}>↓</button>
-          <span class="msg-toggle ${b.is_active ? 'active' : ''}" title="Active on hub/reg desk" onclick="toggleBanner('${b.id}', ${!b.is_active})">👁️</span>
-          <button class="btn btn-sm text-danger border-0" onclick="deleteBanner('${b.id}', '${b.storage_path}')">X</button>
+        <div class="border rounded p-2 mb-2 bg-white">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <img src="${b.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">
+            <div class="flex-grow-1"></div>
+            <button class="btn btn-sm btn-light border" onclick="moveBanner(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
+            <button class="btn btn-sm btn-light border" onclick="moveBanner(${idx}, 1)" ${idx === list.length - 1 ? 'disabled' : ''}>↓</button>
+            <span class="msg-toggle ${b.is_active ? 'active' : ''}" title="Active on hub/reg desk" onclick="toggleBanner('${b.id}', ${!b.is_active})">👁️</span>
+            <button class="btn btn-sm text-danger border-0" onclick="deleteBanner('${b.id}', '${b.storage_path}')">X</button>
+          </div>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text">Link</span>
+            <input type="url" class="form-control" id="bannerLinkEdit-${b.id}" placeholder="https:// (optional)" value="${(b.link_url || '').replace(/"/g, '&quot;')}">
+            <button class="btn btn-outline-secondary" onclick="saveBannerLink('${b.id}')">Save</button>
+          </div>
         </div>
       `).join('');
     }
 
     window.uploadBanner = async () => {
       const fileInput = document.getElementById('bannerFile');
+      const linkInput = document.getElementById('bannerLink');
       const file = fileInput.files[0];
       if (!file) { alert('Choose an image first'); return; }
 
@@ -733,12 +745,20 @@
       const { error: insErr } = await _supabase.from('banners').insert([{
         image_url: pub.publicUrl,
         storage_path: path,
+        link_url: linkInput.value.trim() || null,
         is_active: true,
         sort_order: maxOrder + 1
       }]);
       if (insErr) alert('Save failed: ' + insErr.message);
 
       fileInput.value = '';
+      linkInput.value = '';
+      refreshBanners();
+    };
+
+    window.saveBannerLink = async (id) => {
+      const val = document.getElementById(`bannerLinkEdit-${id}`).value.trim();
+      await _supabase.from('banners').update({ link_url: val || null }).eq('id', id);
       refreshBanners();
     };
 

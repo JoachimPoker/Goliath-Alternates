@@ -164,7 +164,11 @@
       }
 
       box.style.display = 'block';
-      box.innerHTML = list.map((b, i) => `<div class="banner-slide ${i === 0 ? 'active' : ''}"><img src="${b.image_url}" alt=""></div>`).join('')
+      box.innerHTML = list.map((b, i) => {
+        const img = `<img src="${b.image_url}" alt="">`;
+        const inner = b.link_url ? `<a href="${b.link_url}" target="_blank" rel="noopener noreferrer">${img}</a>` : img;
+        return `<div class="banner-slide ${i === 0 ? 'active' : ''}">${inner}</div>`;
+      }).join('')
         + (list.length > 1 ? `<div class="banner-dots">${list.map((_, i) => `<span class="banner-dot ${i === 0 ? 'active' : ''}"></span>`).join('')}</div>` : '');
 
       if (list.length > 1) {
