@@ -33,9 +33,12 @@
       <input type="number" id="mapSearch" class="form-control map-input mb-3" placeholder="Enter Table # (e.g. 45)">
       
       <div id="mapContainer" style="position:relative; border: 2px solid #444; border-radius:8px; overflow:hidden; height: 400px; background: #111; cursor: grab;">
-        <div id="svgWrapper" style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center;">
+        <div id="hallLabel" class="hall-label"></div>
+        <div id="svgWrapper-main" class="hall-map">
            <p class="text-secondary mt-5" id="mapLoadingText">Loading map...</p>
         </div>
+        <div id="svgWrapper-hall5" class="hall-map hall-hidden"></div>
+        <div id="svgWrapper-hall4" class="hall-map hall-hidden"></div>
       </div>
       <div id="mapFeedback" class="mt-2 fw-bold text-center text-warning"></div>
     </div>
@@ -310,67 +313,117 @@
     }
 
     // --- 3. INTERACTIVE MAP LOGIC ---
-    let panzoomInstance = null;
+    const HALLS = [
+      { key: 'main', file: 'main-hall.svg', label: 'Main Hall' },
+      { key: 'hall5', file: 'hall5.svg', label: 'Hall 5' },
+      { key: 'hall4', file: 'hall4.svg', label: 'Hall 4' }
+    ];
+    const hallState = {};
+    let currentHallKey = 'main';
 
     async function initMaps() {
-      const wrapper = document.getElementById('svgWrapper');
-      wrapper.innerHTML = ''; 
+      for (const hall of HALLS) {
+        const wrapper = document.getElementById(`svgWrapper-${hall.key}`);
+        wrapper.innerHTML = '';
 
-      try {
-        const response = await fetch('main-hall.svg');
-        if(!response.ok) throw new Error("File not found");
-        const svgText = await response.text();
-        
-        const mapDiv = document.createElement('div');
-        mapDiv.style.width = '100%';
-        mapDiv.style.height = '100%';
-        mapDiv.innerHTML = svgText;
-        
-        const svgElement = mapDiv.querySelector('svg');
-        if(svgElement) {
-          svgElement.style.width = '100%';
-          svgElement.style.height = '100%';
-          svgElement.id = `svg-main`;
+        try {
+          const response = await fetch(hall.file);
+          if (!response.ok) throw new Error("File not found");
+          const svgText = await response.text();
+
+          const mapDiv = document.createElement('div');
+          mapDiv.style.width = '100%';
+          mapDiv.style.height = '100%';
+          mapDiv.innerHTML = svgText;
+
+          const svgElement = mapDiv.querySelector('svg');
+          if (svgElement) {
+            svgElement.style.width = '100%';
+            svgElement.style.height = '100%';
+            svgElement.id = `svg-${hall.key}`;
+
+            // Each hall's SVG was exported with the same "entrance-main"
+            // id - fine on its own, but all three get loaded into the
+            // page at once, so rename it per-hall here to avoid a
+            // duplicate-id collision.
+            const entranceEl = svgElement.querySelector('#entrance-main');
+            if (entranceEl) entranceEl.id = `entrance-${hall.key}`;
+          }
+          wrapper.appendChild(mapDiv);
+
+          hallState[hall.key] = { svgEl: svgElement, wrapper, panzoom: null, label: hall.label };
+        } catch (e) {
+          wrapper.innerHTML = `<p class="text-danger mt-5">Could not load ${hall.file}. Ensure it is in the same folder.</p>`;
+          hallState[hall.key] = { svgEl: null, wrapper, panzoom: null, label: hall.label };
         }
-        wrapper.appendChild(mapDiv);
-      } catch(e) {
-        wrapper.innerHTML = `<p class="text-danger mt-5">Could not load main-hall.svg. Ensure it is in the same folder.</p>`;
       }
 
-      panzoomInstance = Panzoom(wrapper, {
-        maxScale: 4,
-        minScale: 1,
-        contain: 'outside'
+      // One shared wheel listener that always routes to whichever
+      // hall is currently visible, rather than stacking a separate
+      // listener per hall.
+      document.getElementById('mapContainer').addEventListener('wheel', (e) => {
+        const state = hallState[currentHallKey];
+        if (state && state.panzoom) state.panzoom.zoomWithWheel(e);
       });
-      wrapper.parentElement.addEventListener('wheel', panzoomInstance.zoomWithWheel);
+
+      showHall('main');
+    }
+
+    // Panzoom needs the element visible to measure it correctly, so it's
+    // created the first time a hall is actually shown rather than
+    // upfront for all three (two of which start hidden).
+    function ensurePanzoom(key) {
+      const state = hallState[key];
+      if (!state || state.panzoom || !state.svgEl) return;
+      state.panzoom = Panzoom(state.wrapper, { maxScale: 4, minScale: 1, contain: 'outside' });
+    }
+
+    function showHall(key) {
+      currentHallKey = key;
+      HALLS.forEach(h => {
+        document.getElementById(`svgWrapper-${h.key}`).classList.toggle('hall-hidden', h.key !== key);
+      });
+      document.getElementById('hallLabel').textContent = (hallState[key] && hallState[key].label) || '';
+
+      ensurePanzoom(key);
+      const state = hallState[key];
+      if (state && state.panzoom) state.panzoom.reset({ animate: false });
     }
 
     function clearPathAndHighlights() {
       document.querySelectorAll('.table-highlight').forEach(el => el.classList.remove('table-highlight'));
-      document.querySelectorAll('svg').forEach(svg => svg.classList.remove('map-dimmed'));
-      const existingPath = document.getElementById('dynamic-path');
-      if (existingPath) existingPath.remove();
+      document.querySelectorAll('.hall-map svg').forEach(svg => svg.classList.remove('map-dimmed'));
+      document.querySelectorAll('#dynamic-path').forEach(p => p.remove());
     }
 
     document.getElementById('mapSearch').addEventListener('input', (e) => {
       const tableNum = parseInt(e.target.value);
       const feedback = document.getElementById('mapFeedback');
       clearPathAndHighlights();
-      
+
       if (isNaN(tableNum)) { feedback.innerText = ''; return; }
 
-      const svgMap = document.getElementById(`svg-main`);
-      // MUST MATCH YOUR SVG LAYER NAMES EXACTLY
-      const tableEl = document.getElementById(`Table-${tableNum}`);
-      const entranceEl = document.getElementById('entrance-main');
-
-      if (!svgMap) return;
+      // Table numbers are unique across all three halls combined, so
+      // search each hall's own SVG until one has it.
+      let foundHallKey = null;
+      let tableEl = null;
+      for (const hall of HALLS) {
+        const state = hallState[hall.key];
+        if (!state || !state.svgEl) continue;
+        const el = state.svgEl.querySelector(`#Table-${tableNum}`);
+        if (el) { foundHallKey = hall.key; tableEl = el; break; }
+      }
 
       if (!tableEl) {
-         feedback.innerText = `Table ${tableNum} not found on this map.`;
-         return;
+        feedback.innerText = `Table ${tableNum} not found.`;
+        return;
       }
       feedback.innerText = "";
+
+      showHall(foundHallKey);
+
+      const svgMap = hallState[foundHallKey].svgEl;
+      const entranceEl = svgMap.querySelector(`#entrance-${foundHallKey}`);
 
       svgMap.classList.add('map-dimmed');
       tableEl.classList.add('table-highlight');
@@ -391,7 +444,7 @@
             
             svgMap.appendChild(path);
         } catch(error) {
-            console.log("Could not draw path. Ensure entrance-main exists in SVG.", error);
+            console.log("Could not draw path.", error);
         }
       }
     });

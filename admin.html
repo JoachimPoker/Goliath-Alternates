@@ -5,16 +5,60 @@
   <title>Tournament Admin</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    .badge-icon { font-size: 0.8rem; opacity: 0.5; margin-left: 5px; }
-    .badge-active { opacity: 1; }
+    html { overflow-x: hidden; }
+    body {
+      -webkit-tap-highlight-color: transparent;
+      background: #f1f2f5;
+      overflow-x: hidden;
+    }
     #dashboardSection, #loginSection { display: none; }
     #loginSection { max-width: 400px; margin: 100px auto; }
+
     .status-select { font-weight: bold; border: 2px solid #aaa; }
-    
-    /* Message Toggle Styles */
-    .msg-toggle { cursor: pointer; opacity: 0.3; transition: 0.2s; font-size: 1.2rem; margin: 0 2px; }
-    .msg-toggle.active { opacity: 1; transform: scale(1.1); }
-    .msg-toggle:hover { opacity: 0.7; }
+
+    /* --- Top bar: sticky, wraps cleanly on narrow screens --- */
+    .admin-topbar {
+      position: sticky; top: 0; z-index: 1030;
+      background: #fff;
+      border-bottom: 1px solid #dee2e6;
+      padding: .6rem .9rem;
+    }
+    .admin-topbar h2 { font-size: 1.25rem; margin: 0; }
+
+    .admin-main { max-width: 1100px; margin: 0 auto; padding: 1rem .75rem 3rem; }
+
+    /* --- Comfortable tap targets everywhere, not just icon-only
+           buttons - btn-sm was computing to ~31px tall, below the ~40px
+           minimum that's comfortable to tap accurately on a phone --- */
+    .btn { min-height: 40px; }
+    .btn-sm { min-height: 38px; }
+    .icon-btn, .msg-toggle {
+      min-width: 40px; min-height: 38px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 1.1rem;
+    }
+    .msg-toggle { cursor: pointer; opacity: 0.35; transition: 0.15s; border-radius: 8px; }
+    .msg-toggle.active { opacity: 1; background: rgba(13,110,253,.08); }
+    .msg-toggle:hover { opacity: 0.75; }
+
+    /* Rows of controls (station cards, banner/image rows) wrap onto
+       their own lines instead of squeezing on a narrow screen */
+    .admin-row-wrap { flex-wrap: wrap; row-gap: .5rem; }
+
+    .section-divider { border: none; border-top: 1px solid #dee2e6; margin: 2rem 0; }
+
+    @media (max-width: 576px) {
+      .admin-main { padding-left: .5rem; padding-right: .5rem; }
+      h4 { font-size: 1.05rem; }
+      h6 { font-size: .95rem; }
+    }
+
+    @media (max-width: 500px) {
+      /* The fixed 100px top margin was pushing the login form down
+         unnecessarily on short phone screens, worse once the keyboard
+         opens */
+      #loginSection { margin: 32px auto; }
+    }
   </style>
 </head>
 <body class="bg-light">
@@ -27,138 +71,164 @@
     <div id="loginError" class="text-danger mt-2 text-center small"></div>
   </div>
 
-  <div id="dashboardSection" class="container py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+  <div id="dashboardSection">
+    <div class="admin-topbar d-flex justify-content-between align-items-center flex-wrap gap-2">
       <h2>Admin Dashboard</h2>
-      <div>
-         <button onclick="window.location.reload()" class="btn btn-outline-secondary btn-sm">Refresh</button>
-         <button onclick="window.open('index.html')" class="btn btn-outline-primary btn-sm">Open Website</button>
-         <button onclick="window.open('display.html')" class="btn btn-outline-dark btn-sm">Open Alt Desk</button>
-         <button onclick="window.open('regdesk.html')" class="btn btn-outline-warning btn-sm">Open Reg Desk</button>
-         <button onclick="logout()" class="btn btn-danger btn-sm ms-2">Logout</button>
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <div class="dropdown">
+          <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">Open Screens</button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="index.html" target="_blank">🌐 Website</a></li>
+            <li><a class="dropdown-item" href="display.html" target="_blank">🖥️ Alt Desk</a></li>
+            <li><a class="dropdown-item" href="regdesk.html" target="_blank">🛎️ Reg Desk</a></li>
+          </ul>
+        </div>
+        <button onclick="window.location.reload()" class="btn btn-outline-secondary btn-sm icon-btn" title="Refresh">↻</button>
+        <button onclick="logout()" class="btn btn-outline-danger btn-sm">Logout</button>
       </div>
     </div>
 
-    <div class="card p-3 mb-4 shadow-sm border-0 bg-white">
-      <div class="d-flex align-items-center gap-3">
-        <div id="siteLogoPreviewWrap" style="min-width:90px;"></div>
-        <div class="flex-grow-1">
-          <h6 class="mb-1">Site Logo</h6>
-          <p class="text-muted small mb-2">Used on the website header and the reg desk video wall badge, in place of the "GOLIATH" text. Leave blank to keep the text version.</p>
-          <div class="input-group input-group-sm" style="max-width:420px;">
-            <input type="file" id="siteLogoFile" class="form-control" accept="image/*">
-            <button onclick="uploadSiteLogo()" class="btn btn-primary">Upload</button>
-            <button onclick="clearSiteLogo()" class="btn btn-outline-secondary">Remove</button>
+    <div class="admin-main">
+
+      <!-- LIVE EVENTS -->
+      <h4 class="mb-3 text-success">🟢 Live Events</h4>
+      <div id="liveList" class="row g-3 mb-4"></div>
+
+      <hr class="section-divider">
+
+      <!-- CALENDAR + MESSAGES -->
+      <div class="row g-4">
+        <div class="col-lg-7">
+          <h4 class="mb-3">📅 Event Calendar</h4>
+          <div class="card p-3 mb-3 shadow-sm">
+            <h6>Add to Schedule</h6>
+            <div class="row g-2 mb-2">
+              <div class="col-12 col-md-4"><input id="newDate" type="date" class="form-control"></div>
+              <div class="col-12 col-md-8"><input id="newName" class="form-control" placeholder="Event Name"></div>
+            </div>
+            <div class="row g-2">
+              <div class="col-6 col-md-3"><input id="newTime" class="form-control" placeholder="Time (12:00)"></div>
+              <div class="col-6 col-md-3"><input id="newLoc" class="form-control" placeholder="Loc (TBD)"></div>
+              <div class="col-12 col-md-6"><button onclick="addToSchedule()" class="btn btn-secondary w-100">Add to Calendar</button></div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+            <div class="form-check m-0">
+              <input class="form-check-input" type="checkbox" id="showPastEvents" onchange="toggleShowPastEvents(this.checked)">
+              <label class="form-check-label small" for="showPastEvents">Show past events</label>
+            </div>
+          </div>
+          <div id="upcomingList" class="list-group shadow-sm mb-2"></div>
+          <div id="upcomingPager" class="d-flex justify-content-center align-items-center gap-2"></div>
+        </div>
+
+        <div class="col-lg-5">
+          <h4 class="mb-3">💬 Ticker Messages</h4>
+          <div class="card p-3 shadow-sm">
+            <div class="mb-2">
+              <input id="newMsg" class="form-control" placeholder="Message">
+            </div>
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+              <div class="d-flex flex-wrap gap-3">
+                <div class="form-check m-0">
+                  <input class="form-check-input" type="checkbox" id="checkHome" checked>
+                  <label class="form-check-label small">Website 🌐</label>
+                </div>
+                <div class="form-check m-0">
+                  <input class="form-check-input" type="checkbox" id="checkTV" checked>
+                  <label class="form-check-label small">Alt Desk 🖥️</label>
+                </div>
+                <div class="form-check m-0">
+                  <input class="form-check-input" type="checkbox" id="checkRegdesk">
+                  <label class="form-check-label small">Reg Desk 🛎️</label>
+                </div>
+              </div>
+              <button onclick="addMsg()" class="btn btn-primary btn-sm px-4">ADD</button>
+            </div>
+            <ul id="msgList" class="list-group list-group-flush small"></ul>
           </div>
         </div>
       </div>
-    </div>
 
-    <div class="row">
-      <div class="col-lg-7">
-        <h4 class="mb-3 text-success">🟢 Live Events</h4>
-        <div id="liveList" class="row g-3 mb-5"></div>
+      <hr class="section-divider">
 
-        <h4 class="mb-3 text-secondary">📅 Event Calendar</h4>
-        <div class="card p-3 mb-3 shadow-sm border-0 bg-white">
-          <h6>Add to Schedule</h6>
-          <div class="input-group mb-2">
-            <input id="newDate" type="date" class="form-control" style="max-width: 140px;">
-            <input id="newName" class="form-control" placeholder="Event Name">
+      <!-- REG DESK + MEDIA -->
+      <div class="row g-4">
+        <div class="col-lg-7">
+          <h4 class="mb-3">📺 Reg Desk Video Wall</h4>
+          <p class="text-muted small mb-3">Toggle each station open/closed and set what it's serving. Updates the video wall instantly. When all 4 are closed, the wall switches to the idle slideshow.</p>
+
+          <div class="card p-3 mb-3 shadow-sm">
+            <h6 class="mb-2">Live Screen Background</h6>
+            <p class="text-muted small mb-2">Behind the header and stations while at least one station is open. Design at 1920x384 for a clean full-bleed fit with no cropping. Leave blank to use the default gradient.</p>
+            <div id="regdeskBgPreviewWrap" class="mb-2"></div>
+            <div class="d-flex flex-wrap gap-2">
+              <input type="file" id="regdeskBgFile" class="form-control" accept="image/*" style="max-width:260px;">
+              <button onclick="uploadRegdeskBg('regdeskBgFile', 'background_url', 'background_path')" class="btn btn-primary">Upload</button>
+              <button onclick="clearRegdeskBg('background_url', 'background_path')" class="btn btn-outline-secondary">Remove</button>
+            </div>
           </div>
-          <div class="input-group">
-            <input id="newTime" class="form-control" placeholder="Time (12:00)">
-            <input id="newLoc" class="form-control" placeholder="Loc (TBD)">
-            <button onclick="addToSchedule()" class="btn btn-secondary">Add to Calendar</button>
+
+          <div class="card p-3 mb-3 shadow-sm">
+            <h6 class="mb-2">Idle Screen Images</h6>
+            <p class="text-muted small mb-2">Shown full-screen when all 4 stations are closed. Add as many as you like - each has its own display duration. With just one, it shows statically (no rotation). Design at 1920x384 for a clean full-bleed fit.</p>
+            <div class="d-flex flex-wrap gap-2 mb-2">
+              <input type="file" id="regdeskIdleFile" class="form-control" accept="image/*" style="max-width:260px;">
+              <button onclick="uploadRegdeskIdleImage()" class="btn btn-primary">Upload</button>
+            </div>
+            <div id="regdeskIdleWrap"></div>
           </div>
+
+          <h6 class="mb-2 mt-4">Stations</h6>
+          <div id="stationsWrap"></div>
         </div>
-        <div id="upcomingList" class="list-group shadow-sm"></div>
-      </div>
 
-      <div class="col-lg-5">
-        <h4 class="mb-3">Ticker Messages</h4>
-        <div class="card p-3 shadow-sm border-0 bg-white">
-          <div class="mb-2">
-            <input id="newMsg" class="form-control" placeholder="Message">
-          </div>
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <div>
-              <div class="form-check form-check-inline">
-                <input class="form-check-input" type="checkbox" id="checkHome" checked>
-                <label class="form-check-label small">Show on Website 🌐</label>
-              </div>
-              <div class="form-check form-check-inline">
-                <input class="form-check-input" type="checkbox" id="checkTV" checked>
-                <label class="form-check-label small">Show on Alt Desk 🖥️</label>
-              </div>
-              <div class="form-check form-check-inline">
-                <input class="form-check-input" type="checkbox" id="checkRegdesk">
-                <label class="form-check-label small">Show on Reg Desk 🛎️</label>
+        <div class="col-lg-5">
+          <h4 class="mb-3">🖼️ Media</h4>
+
+          <div class="card p-3 mb-4 shadow-sm">
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+              <div id="siteLogoPreviewWrap" style="min-width:90px;"></div>
+              <div class="flex-grow-1" style="min-width:220px;">
+                <h6 class="mb-1">Site Logo</h6>
+                <p class="text-muted small mb-2">Used on the website header and the reg desk video wall badge, in place of the "GOLIATH" text. Leave blank to keep the text version.</p>
+                <div class="d-flex flex-wrap gap-2">
+                  <input type="file" id="siteLogoFile" class="form-control" accept="image/*" style="max-width:220px;">
+                  <button onclick="uploadSiteLogo()" class="btn btn-primary">Upload</button>
+                  <button onclick="clearSiteLogo()" class="btn btn-outline-secondary">Remove</button>
+                </div>
               </div>
             </div>
-            <button onclick="addMsg()" class="btn btn-primary btn-sm px-4">ADD</button>
           </div>
-          <ul id="msgList" class="list-group list-group-flush small"></ul>
+
+          <h6 class="mb-2">Ad Banners</h6>
+          <div class="card p-3 mb-4 shadow-sm">
+            <p class="text-muted small mb-2">Rotating carousel on the mobile website only. Design at <strong>1200x400px (3:1)</strong> so they fill the space edge-to-edge with no cropping.</p>
+            <div class="mb-2">
+              <input type="file" id="bannerFile" class="form-control" accept="image/*">
+            </div>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+              <input type="url" id="bannerLink" class="form-control" placeholder="Link (optional - tap the banner opens this)" style="flex:1 1 200px;">
+              <button onclick="uploadBanner()" class="btn btn-primary">Upload</button>
+            </div>
+            <div id="bannersWrap"></div>
+          </div>
+
+          <h6 class="mb-2">Alt Desk Left Panel</h6>
+          <div class="card p-3 shadow-sm">
+            <p class="text-muted small mb-2">Replaces the floor map area on the Alt Desk screen. Add floor plans, ads, whatever you like - each has its own duration. Images are shown in full with no cropping regardless of shape.</p>
+            <div class="d-flex flex-wrap gap-2 mb-2">
+              <input type="file" id="displayCarouselFile" class="form-control" accept="image/*" style="max-width:260px;">
+              <button onclick="uploadDisplayCarouselImage()" class="btn btn-primary">Upload</button>
+            </div>
+            <div id="displayCarouselWrap"></div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="row mt-3">
-      <div class="col-lg-7">
-        <h4 class="mb-3">📺 Reg Desk Video Wall</h4>
-        <p class="text-muted small mb-2">Toggle each station open/closed and set what it's serving. Updates the video wall instantly. When all 4 are closed, the wall switches to the idle slideshow.</p>
-
-        <div class="card p-3 mb-3 shadow-sm border-0 bg-white">
-          <h6 class="mb-2">Live Screen Background</h6>
-          <p class="text-muted small mb-2">Behind the header and stations while at least one station is open. Design at 1920x384 for a clean full-bleed fit with no cropping. Leave blank to use the default gradient.</p>
-          <div id="regdeskBgPreviewWrap" class="mb-2"></div>
-          <div class="input-group input-group-sm">
-            <input type="file" id="regdeskBgFile" class="form-control" accept="image/*">
-            <button onclick="uploadRegdeskBg('regdeskBgFile', 'background_url', 'background_path')" class="btn btn-primary">Upload</button>
-            <button onclick="clearRegdeskBg('background_url', 'background_path')" class="btn btn-outline-secondary">Remove</button>
-          </div>
-        </div>
-
-        <div class="card p-3 mb-3 shadow-sm border-0 bg-white">
-          <h6 class="mb-2">Idle Screen Images</h6>
-          <p class="text-muted small mb-2">Shown full-screen when all 4 stations are closed. Add as many as you like - each has its own display duration. With just one, it shows statically (no rotation). Design at 1920x384 for a clean full-bleed fit.</p>
-          <div class="input-group input-group-sm mb-2">
-            <input type="file" id="regdeskIdleFile" class="form-control" accept="image/*">
-            <button onclick="uploadRegdeskIdleImage()" class="btn btn-primary">Upload</button>
-          </div>
-          <div id="regdeskIdleWrap"></div>
-        </div>
-
-        <div id="stationsWrap"></div>
-      </div>
-
-      <div class="col-lg-5">
-        <h4 class="mb-3">🖼️ Ad Banners</h4>
-        <div class="card p-3 shadow-sm border-0 bg-white">
-          <p class="text-muted small mb-2">Rotating carousel on the mobile website only. Design at <strong>1200x400px (3:1)</strong> so they fill the space edge-to-edge with no cropping.</p>
-          <div class="input-group mb-2">
-            <input type="file" id="bannerFile" class="form-control" accept="image/*">
-          </div>
-          <div class="input-group mb-3">
-            <span class="input-group-text">Link</span>
-            <input type="url" id="bannerLink" class="form-control" placeholder="https:// (optional - tap the banner opens this)">
-            <button onclick="uploadBanner()" class="btn btn-primary">Upload</button>
-          </div>
-          <div id="bannersWrap"></div>
-        </div>
-
-        <h4 class="mb-3 mt-4">🗺️ Alt Desk Left Panel</h4>
-        <div class="card p-3 shadow-sm border-0 bg-white">
-          <p class="text-muted small mb-2">Replaces the floor map area on the Alt Desk screen. Add floor plans, ads, whatever you like - each has its own duration. Images are shown in full with no cropping regardless of shape.</p>
-          <div class="input-group input-group-sm mb-2">
-            <input type="file" id="displayCarouselFile" class="form-control" accept="image/*">
-            <button onclick="uploadDisplayCarouselImage()" class="btn btn-primary">Upload</button>
-          </div>
-          <div id="displayCarouselWrap"></div>
-        </div>
-      </div>
     </div>
   </div>
+
 
   <div class="modal fade" id="editModal" tabindex="-1">
     <div class="modal-dialog">
@@ -236,9 +306,8 @@
       refreshDisplayCarousel();
 
       const liveDiv = document.getElementById('liveList');
-      const upcomingDiv = document.getElementById('upcomingList');
       liveDiv.innerHTML = '';
-      upcomingDiv.innerHTML = '';
+      window._upcomingCache = [];
 
       // RENDER TOURNAMENTS
       (tours || []).forEach(t => {
@@ -281,21 +350,11 @@
             </div>
           </div>`;
         } else {
-          upcomingDiv.innerHTML += `
-          <div class="list-group-item d-flex justify-content-between align-items-center">
-            <div>
-              <span class="badge bg-light text-dark border mr-2">${t.tournament_date || 'No Date'}</span>
-              <strong>${t.name}</strong> 
-              <span class="text-muted small">(${t.start_time})</span>
-            </div>
-            <div>
-              <button class="btn btn-sm btn-outline-secondary me-2" onclick="openEdit('${t.id}', '${safeName}', '${t.start_time}', '${safeLoc}', '${t.tournament_date}')">Edit</button>
-              <button class="btn btn-sm btn-success fw-bold" onclick="toggleActive('${t.id}', true)">GO LIVE</button>
-              <button class="btn btn-sm text-danger border-0" onclick="deleteTourn('${t.id}')">X</button>
-            </div>
-          </div>`;
+          window._upcomingCache.push(t);
         }
       });
+
+      renderUpcomingList();
 
       // RENDER MESSAGES (WITH TOGGLES)
       document.getElementById('msgList').innerHTML = (msgs.data || []).map(m => {
@@ -315,6 +374,75 @@
         </li>
       `}).join('');
     }
+
+    // --- UPCOMING EVENTS LIST: paginated and date-filtered, so a big
+    // imported schedule doesn't turn this into one giant page. ---
+    const UPCOMING_PAGE_SIZE = 10;
+    let upcomingPageIndex = 0;
+    let upcomingShowPast = false;
+    window._upcomingCache = [];
+
+    function renderUpcomingList() {
+      const upcomingDiv = document.getElementById('upcomingList');
+      const pagerDiv = document.getElementById('upcomingPager');
+      const today = new Date().toISOString().split('T')[0];
+
+      let rows = window._upcomingCache;
+      if (!upcomingShowPast) {
+        rows = rows.filter(t => !t.tournament_date || t.tournament_date >= today);
+      }
+
+      const totalPages = Math.max(1, Math.ceil(rows.length / UPCOMING_PAGE_SIZE));
+      if (upcomingPageIndex >= totalPages) upcomingPageIndex = totalPages - 1;
+      if (upcomingPageIndex < 0) upcomingPageIndex = 0;
+
+      const start = upcomingPageIndex * UPCOMING_PAGE_SIZE;
+      const pageRows = rows.slice(start, start + UPCOMING_PAGE_SIZE);
+
+      if (pageRows.length === 0) {
+        upcomingDiv.innerHTML = `<div class="list-group-item text-muted text-center small">${upcomingShowPast ? 'No events at all yet.' : 'Nothing upcoming right now.'}</div>`;
+      } else {
+        upcomingDiv.innerHTML = pageRows.map(t => {
+          const safeName = t.name.replace(/'/g, "&apos;");
+          const safeLoc = (t.location || '').replace(/'/g, "&apos;");
+          const isPast = t.tournament_date && t.tournament_date < today;
+          return `
+          <div class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2 ${isPast ? 'opacity-75' : ''}">
+            <div>
+              <span class="badge bg-light text-dark border mr-2">${t.tournament_date || 'No Date'}</span>
+              <strong>${t.name}</strong>
+              <span class="text-muted small">(${t.start_time})</span>
+            </div>
+            <div>
+              <button class="btn btn-sm btn-outline-secondary me-2" onclick="openEdit('${t.id}', '${safeName}', '${t.start_time}', '${safeLoc}', '${t.tournament_date}')">Edit</button>
+              <button class="btn btn-sm btn-success fw-bold" onclick="toggleActive('${t.id}', true)">GO LIVE</button>
+              <button class="btn btn-sm text-danger border-0" onclick="deleteTourn('${t.id}')">X</button>
+            </div>
+          </div>`;
+        }).join('');
+      }
+
+      if (totalPages > 1) {
+        pagerDiv.innerHTML = `
+          <button class="btn btn-sm btn-outline-secondary" onclick="changeUpcomingPage(-1)" ${upcomingPageIndex === 0 ? 'disabled' : ''}>‹ Prev</button>
+          <span class="small text-muted">Page ${upcomingPageIndex + 1} of ${totalPages}</span>
+          <button class="btn btn-sm btn-outline-secondary" onclick="changeUpcomingPage(1)" ${upcomingPageIndex === totalPages - 1 ? 'disabled' : ''}>Next ›</button>
+        `;
+      } else {
+        pagerDiv.innerHTML = '';
+      }
+    }
+
+    window.changeUpcomingPage = (delta) => {
+      upcomingPageIndex += delta;
+      renderUpcomingList();
+    };
+
+    window.toggleShowPastEvents = (checked) => {
+      upcomingShowPast = checked;
+      upcomingPageIndex = 0;
+      renderUpcomingList();
+    };
 
     // --- ACTIONS ---
     window.openEdit = (id, name, time, loc, date) => {
@@ -461,18 +589,22 @@
       }
 
       wrap.innerHTML = list.map((img, idx) => `
-        <div class="d-flex align-items-center gap-2 border rounded p-2 mb-2 bg-white">
-          <img src="${img.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">
-          <div class="input-group input-group-sm" style="max-width:140px;">
-            <input type="number" min="1" class="form-control" id="idleDur-${img.id}" value="${img.duration_seconds}">
-            <span class="input-group-text">sec</span>
+        <div class="border rounded p-2 mb-2 bg-white">
+          <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+            <img src="${img.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">
+            <div class="input-group input-group-sm" style="max-width:140px;">
+              <input type="number" min="1" class="form-control" id="idleDur-${img.id}" value="${img.duration_seconds}">
+              <span class="input-group-text">sec</span>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" onclick="saveIdleImageDuration('${img.id}')">Save</button>
           </div>
-          <button class="btn btn-sm btn-outline-secondary" onclick="saveIdleImageDuration('${img.id}')">Save</button>
-          <div class="flex-grow-1"></div>
-          <button class="btn btn-sm btn-light border" onclick="moveIdleImage(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
-          <button class="btn btn-sm btn-light border" onclick="moveIdleImage(${idx}, 1)" ${idx === list.length - 1 ? 'disabled' : ''}>↓</button>
-          <span class="msg-toggle ${img.is_active ? 'active' : ''}" title="Active in rotation" onclick="toggleIdleImage('${img.id}', ${!img.is_active})">👁️</span>
-          <button class="btn btn-sm text-danger border-0" onclick="deleteIdleImage('${img.id}', '${img.storage_path}')">X</button>
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <button class="btn btn-sm btn-light border icon-btn" onclick="moveIdleImage(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
+            <button class="btn btn-sm btn-light border icon-btn" onclick="moveIdleImage(${idx}, 1)" ${idx === list.length - 1 ? 'disabled' : ''}>↓</button>
+            <span class="msg-toggle icon-btn ${img.is_active ? 'active' : ''}" title="Active in rotation" onclick="toggleIdleImage('${img.id}', ${!img.is_active})">👁️</span>
+            <div class="flex-grow-1"></div>
+            <button class="btn btn-sm text-danger border icon-btn" onclick="deleteIdleImage('${img.id}', '${img.storage_path}')">X</button>
+          </div>
         </div>
       `).join('');
     }
@@ -588,18 +720,22 @@
       }
 
       wrap.innerHTML = list.map((img, idx) => `
-        <div class="d-flex align-items-center gap-2 border rounded p-2 mb-2 bg-white">
-          <img src="${img.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">
-          <div class="input-group input-group-sm" style="max-width:140px;">
-            <input type="number" min="1" class="form-control" id="dispDur-${img.id}" value="${img.duration_seconds}">
-            <span class="input-group-text">sec</span>
+        <div class="border rounded p-2 mb-2 bg-white">
+          <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+            <img src="${img.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">
+            <div class="input-group input-group-sm" style="max-width:140px;">
+              <input type="number" min="1" class="form-control" id="dispDur-${img.id}" value="${img.duration_seconds}">
+              <span class="input-group-text">sec</span>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" onclick="saveDisplayCarouselDuration('${img.id}')">Save</button>
           </div>
-          <button class="btn btn-sm btn-outline-secondary" onclick="saveDisplayCarouselDuration('${img.id}')">Save</button>
-          <div class="flex-grow-1"></div>
-          <button class="btn btn-sm btn-light border" onclick="moveDisplayCarouselImage(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
-          <button class="btn btn-sm btn-light border" onclick="moveDisplayCarouselImage(${idx}, 1)" ${idx === list.length - 1 ? 'disabled' : ''}>↓</button>
-          <span class="msg-toggle ${img.is_active ? 'active' : ''}" title="Active in rotation" onclick="toggleDisplayCarouselImage('${img.id}', ${!img.is_active})">👁️</span>
-          <button class="btn btn-sm text-danger border-0" onclick="deleteDisplayCarouselImage('${img.id}', ${img.storage_path ? `'${img.storage_path}'` : 'null'})">X</button>
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <button class="btn btn-sm btn-light border icon-btn" onclick="moveDisplayCarouselImage(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
+            <button class="btn btn-sm btn-light border icon-btn" onclick="moveDisplayCarouselImage(${idx}, 1)" ${idx === list.length - 1 ? 'disabled' : ''}>↓</button>
+            <span class="msg-toggle icon-btn ${img.is_active ? 'active' : ''}" title="Active in rotation" onclick="toggleDisplayCarouselImage('${img.id}', ${!img.is_active})">👁️</span>
+            <div class="flex-grow-1"></div>
+            <button class="btn btn-sm text-danger border icon-btn" onclick="deleteDisplayCarouselImage('${img.id}', ${img.storage_path ? `'${img.storage_path}'` : 'null'})">X</button>
+          </div>
         </div>
       `).join('');
     }
@@ -710,13 +846,13 @@
 
       wrap.innerHTML = list.map((b, idx) => `
         <div class="border rounded p-2 mb-2 bg-white">
-          <div class="d-flex align-items-center gap-2 mb-2">
+          <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
             <img src="${b.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">
             <div class="flex-grow-1"></div>
-            <button class="btn btn-sm btn-light border" onclick="moveBanner(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
-            <button class="btn btn-sm btn-light border" onclick="moveBanner(${idx}, 1)" ${idx === list.length - 1 ? 'disabled' : ''}>↓</button>
-            <span class="msg-toggle ${b.is_active ? 'active' : ''}" title="Active on hub/reg desk" onclick="toggleBanner('${b.id}', ${!b.is_active})">👁️</span>
-            <button class="btn btn-sm text-danger border-0" onclick="deleteBanner('${b.id}', '${b.storage_path}')">X</button>
+            <button class="btn btn-sm btn-light border icon-btn" onclick="moveBanner(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
+            <button class="btn btn-sm btn-light border icon-btn" onclick="moveBanner(${idx}, 1)" ${idx === list.length - 1 ? 'disabled' : ''}>↓</button>
+            <span class="msg-toggle icon-btn ${b.is_active ? 'active' : ''}" title="Active on hub/reg desk" onclick="toggleBanner('${b.id}', ${!b.is_active})">👁️</span>
+            <button class="btn btn-sm text-danger border icon-btn" onclick="deleteBanner('${b.id}', '${b.storage_path}')">X</button>
           </div>
           <div class="input-group input-group-sm">
             <span class="input-group-text">Link</span>

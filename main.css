@@ -255,6 +255,27 @@ body {
 }
 
 /* === INTERACTIVE MAP STYLES === */
+.hall-map {
+  width: 100%; height: 100%;
+  display: flex; justify-content: center; align-items: center;
+}
+.hall-map.hall-hidden { display: none; }
+
+.hall-label {
+  position: absolute;
+  top: 8px; left: 8px;
+  background: rgba(0,0,0,0.6);
+  color: var(--text-gold);
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  z-index: 5;
+  pointer-events: none;
+}
+
 .table-highlight {
   fill: var(--text-gold) !important; /* Uses your existing gold color */
   stroke: #fff !important;
@@ -499,7 +520,7 @@ body.regdesk-body {
 }
 
 .header-upcoming-label {
-  font-size: 8vh;
+  font-size: 2.6vh;
   font-weight: 800;
   letter-spacing: 1.5px;
   color: var(--text-gold);
