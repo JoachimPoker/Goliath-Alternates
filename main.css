@@ -409,13 +409,14 @@ body.regdesk-body {
   pointer-events: none;
 }
 
-/* --- Header row: badge + flight name + alt status, all inline --- */
+/* --- Header row: badge, then flight name + alt status stacked
+       underneath each other --- */
 .regdesk-header {
   position: relative;
   z-index: 3;
   display: flex;
   align-items: center;
-  gap: 2vh;
+  gap: 4.5vh;
   height: 38vh;
   padding: 0 3.5vh;
   flex-shrink: 0;
@@ -442,8 +443,16 @@ body.regdesk-body {
   flex-shrink: 0;
 }
 
+.header-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.8vh;
+  min-width: 0;
+}
+
 .header-flight {
-  font-size: 10vh;
+  font-size: 8vh;
   font-weight: 900;
   color: #fff;
   text-transform: uppercase;
@@ -451,11 +460,11 @@ body.regdesk-body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 44vw;
+  max-width: 60vw;
 }
 
 .header-status {
-  font-size: 10vh;
+  font-size: 8vh;
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -470,7 +479,7 @@ body.regdesk-body {
 .header-dots {
   display: flex;
   gap: 0.9vh;
-  margin-left: 0.4vh;
+  margin-top: 0.4vh;
 }
 .header-dot {
   width: 1.2vh; height: 1.2vh;
@@ -478,6 +487,46 @@ body.regdesk-body {
   background: rgba(255,255,255,0.22);
 }
 .header-dot.active { background: var(--text-gold); }
+
+/* --- Header "Upcoming Events Today" fallback, shown instead of the
+       flight/status pair when nothing is active. Bounded and
+       auto-rotating (never grows with how many events are today). --- */
+.header-upcoming {
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.8vh;
+  min-width: 0;
+}
+
+.header-upcoming-label {
+  font-size: 8vh;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: var(--text-gold);
+  text-transform: uppercase;
+}
+
+.header-upcoming-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6vh;
+}
+
+.header-upcoming-item {
+  font-size: 8vh;
+  font-weight: 800;
+  color: #fff;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 68vw;
+}
+
+.header-upcoming-item .time {
+  color: var(--text-gold);
+  margin-left: 1.2vh;
+}
 
 /* --- Stations row: reserves width for 5 slots, but only the first 4 get
        the boxed panel treatment. The 5th is left empty on purpose so the

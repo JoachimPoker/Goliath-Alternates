@@ -26,9 +26,17 @@
     <div class="regdesk-header">
       <div class="regdesk-logo" id="headerLogoText">GOLIATH</div>
       <img class="regdesk-logo-img" id="headerLogoImg" alt="" style="display:none;">
-      <div class="header-flight" id="spotlightName"></div>
-      <div class="header-status" id="spotlightStatus"></div>
-      <div class="header-dots" id="spotlightDots"></div>
+
+      <div class="header-info">
+        <div class="header-flight" id="spotlightName"></div>
+        <div class="header-status" id="spotlightStatus"></div>
+        <div class="header-dots" id="spotlightDots"></div>
+      </div>
+
+      <div class="header-upcoming" id="headerUpcoming" style="display:none;">
+        <div class="header-upcoming-label" id="headerUpcomingLabel">Upcoming Events Today</div>
+        <div class="header-upcoming-list" id="headerUpcomingList"></div>
+      </div>
     </div>
 
     <div class="regdesk-stations-row">
@@ -64,11 +72,15 @@
     }
 
     // --- STATIONS ---
+    let stationsSnapshot = null;
     async function loadStations() {
       const { data } = await _supabase.from('stations').select('*').order('station_number');
-      const row = document.getElementById('stationsRow');
       const stations = data || [];
+      const snapshot = JSON.stringify(stations);
+      if (snapshot === stationsSnapshot) return; // nothing changed - don't touch the DOM
+      stationsSnapshot = snapshot;
 
+      const row = document.getElementById('stationsRow');
       row.innerHTML = stations.map(s => `
         <div class="station-card">
           <div class="station-badge ${s.is_open ? '' : 'closed'}">${s.is_open ? 'OPEN' : 'CLOSED'}</div>
@@ -85,10 +97,16 @@
     let spotlightTournaments = [];
     let spotlightIndex = 0;
     let spotlightTimer = null;
+    let altsSnapshot = null;
 
     async function loadAlts() {
       const { data } = await _supabase.from('tournaments').select('*').eq('is_active', true).order('created_at');
-      spotlightTournaments = data || [];
+      const rows = data || [];
+      const snapshot = JSON.stringify(rows);
+      if (snapshot === altsSnapshot) return; // nothing changed - leave the rotation exactly where it is
+      altsSnapshot = snapshot;
+
+      spotlightTournaments = rows;
       spotlightIndex = 0;
       renderSpotlight();
 
@@ -102,17 +120,13 @@
     }
 
     function renderSpotlight() {
+      updateHeaderMode();
+
+      if (spotlightTournaments.length === 0) return; // header-upcoming panel handles this state
+
       const nameEl = document.getElementById('spotlightName');
       const statusEl = document.getElementById('spotlightStatus');
       const dotsEl = document.getElementById('spotlightDots');
-
-      if (spotlightTournaments.length === 0) {
-        nameEl.textContent = 'No Active Events';
-        statusEl.textContent = '';
-        statusEl.className = 'header-status empty';
-        dotsEl.innerHTML = '';
-        return;
-      }
 
       const t = spotlightTournaments[spotlightIndex];
       let statusText = '', cls = '';
@@ -130,20 +144,97 @@
         : '';
     }
 
+    // --- HEADER MODE: shows the active-tournament spotlight when
+    // something's live; otherwise shows today's schedule instead of a
+    // bare "no active events" message, since stations can well be open
+    // and busy even with nothing tracked as a live tournament. ---
+    function updateHeaderMode() {
+      const showActive = spotlightTournaments.length > 0;
+      document.getElementById('spotlightName').style.display = showActive ? '' : 'none';
+      document.getElementById('spotlightStatus').style.display = showActive ? '' : 'none';
+      document.getElementById('spotlightDots').style.display = showActive ? '' : 'none';
+      document.getElementById('headerUpcoming').style.display = showActive ? 'none' : 'flex';
+    }
+
+    // Bounded and auto-rotating (4 at a time), same pattern used
+    // everywhere else on this screen - never grows with how many
+    // events happen to be on today.
+    const HEADER_UPCOMING_PAGE_SIZE = 1;
+    let headerUpcomingRows = [];
+    let headerUpcomingPageIndex = 0;
+    let headerUpcomingTimer = null;
+    let headerUpcomingSnapshot = null;
+
+    async function loadHeaderUpcoming() {
+      const today = new Date().toISOString().split('T')[0];
+      const { data } = await _supabase.from('tournaments').select('*')
+        .eq('tournament_date', today)
+        .eq('is_active', false)
+        .order('start_time');
+
+      const rows = data || [];
+      const snapshot = JSON.stringify(rows);
+      if (snapshot === headerUpcomingSnapshot) return; // nothing changed - leave rotation alone
+      headerUpcomingSnapshot = snapshot;
+
+      headerUpcomingRows = rows;
+      headerUpcomingPageIndex = 0;
+      if (headerUpcomingTimer) clearInterval(headerUpcomingTimer);
+
+      renderHeaderUpcomingPage();
+
+      const totalPages = Math.ceil(headerUpcomingRows.length / HEADER_UPCOMING_PAGE_SIZE);
+      if (totalPages > 1) {
+        headerUpcomingTimer = setInterval(() => {
+          headerUpcomingPageIndex = (headerUpcomingPageIndex + 1) % totalPages;
+          renderHeaderUpcomingPage();
+        }, 6000);
+      }
+    }
+
+    function renderHeaderUpcomingPage() {
+      const labelEl = document.getElementById('headerUpcomingLabel');
+      const listEl = document.getElementById('headerUpcomingList');
+
+      if (headerUpcomingRows.length === 0) {
+        labelEl.textContent = 'No Events Scheduled Today';
+        listEl.innerHTML = '';
+        return;
+      }
+
+      labelEl.textContent = 'Upcoming Events Today';
+      const start = headerUpcomingPageIndex * HEADER_UPCOMING_PAGE_SIZE;
+      const pageItems = headerUpcomingRows.slice(start, start + HEADER_UPCOMING_PAGE_SIZE);
+
+      listEl.innerHTML = pageItems.map(t => `
+        <div class="header-upcoming-item">${t.name}<span class="time">${t.start_time || ''}</span></div>
+      `).join('');
+    }
+
     // --- TICKER BANNER: its own independent toggle (show_on_regdesk),
     // separate from the Website and Alt Desk tickers. ---
+    let tickerSnapshot = null;
     async function loadTicker() {
       const { data } = await _supabase.from('messages').select('*').eq('show_on_regdesk', true).order('created_at');
+      const rows = data || [];
+      const snapshot = JSON.stringify(rows);
+      if (snapshot === tickerSnapshot) return; // nothing changed - don't restart the scroll
+      tickerSnapshot = snapshot;
+
       const tickerEl = document.getElementById('regdeskTicker');
-      renderSeamlessTicker(tickerEl, (data || []).map(m => m.text), 100);
+      renderSeamlessTicker(tickerEl, rows.map(m => m.text), 100);
     }
 
     // --- LIVE BACKGROUND: shown behind the header+stations while at
     // least one station is open. Falls back to the default gradient
     // when unset. Design it at 1920x384 (native resolution) for a
     // clean full-bleed fit with no cropping. ---
+    let backgroundSnapshot = null;
     async function loadBackground() {
       const { data } = await _supabase.from('regdesk_settings').select('*').eq('id', 1).maybeSingle();
+      const snapshot = JSON.stringify(data);
+      if (snapshot === backgroundSnapshot) return; // nothing changed
+      backgroundSnapshot = snapshot;
 
       const bgImage = document.getElementById('bgImage');
       const watermark = document.getElementById('watermark');
@@ -166,10 +257,16 @@
     let idleIndex = 0;
     let idleTimer = null;
     let idleActiveIsA = true;
+    let idleImagesSnapshot = null;
 
     async function loadIdleImages() {
       const { data } = await _supabase.from('regdesk_idle_images').select('*').eq('is_active', true).order('sort_order');
-      idleImages = data || [];
+      const images = data || [];
+      const snapshot = JSON.stringify(images);
+      if (snapshot === idleImagesSnapshot) return; // nothing changed - let the rotation keep going undisturbed
+      idleImagesSnapshot = snapshot;
+
+      idleImages = images;
       idleIndex = 0;
       if (idleTimer) clearTimeout(idleTimer);
 
@@ -213,8 +310,13 @@
 
     // --- SITE LOGO: shared across the website and this video wall.
     // Falls back to the "GOLIATH" text badge wherever it's unset. ---
+    let siteLogoSnapshot = null;
     async function loadSiteLogo() {
       const { data } = await _supabase.from('site_settings').select('*').eq('id', 1).maybeSingle();
+      const snapshot = JSON.stringify(data);
+      if (snapshot === siteLogoSnapshot) return; // nothing changed
+      siteLogoSnapshot = snapshot;
+
       const url = data && data.logo_url;
 
       const headerText = document.getElementById('headerLogoText');
@@ -232,21 +334,25 @@
     }
 
     // --- INIT + REALTIME ---
-    _supabase.channel('public').on('postgres_changes', { event: '*', schema: 'public' }, () => {
+    function refreshRegdesk() {
       loadStations();
       loadAlts();
+      loadHeaderUpcoming();
       loadIdleImages();
       loadBackground();
       loadTicker();
       loadSiteLogo();
-    }).subscribe();
+    }
 
-    loadStations();
-    loadAlts();
-    loadIdleImages();
-    loadBackground();
-    loadTicker();
-    loadSiteLogo();
+    _supabase.channel('public').on('postgres_changes', { event: '*', schema: 'public' }, refreshRegdesk).subscribe();
+
+    refreshRegdesk();
+
+    // Safety net: this screen runs unattended for hours with nobody
+    // there to notice or refresh it if a realtime update is ever missed.
+    // Poll on a fixed interval regardless, so it can never drift stale
+    // for long.
+    setInterval(refreshRegdesk, 60000);
   </script>
 </body>
 </html>

@@ -24,6 +24,8 @@
 
     <div id="tournamentList"></div>
 
+    <div id="todaySchedule"></div>
+
     <div id="bannerCarousel" class="banner-carousel" style="display:none;"></div>
 
     <div class="flat-card mt-5">
@@ -67,8 +69,10 @@
     async function loadHome() {
       const { data } = await _supabase.from('tournaments').select('*').eq('is_active', true).order('created_at');
       const list = document.getElementById('tournamentList');
+      const todayEl = document.getElementById('todaySchedule');
 
       if (!data || data.length === 0) {
+        todayEl.innerHTML = '';
         await renderUpcomingSchedule(list);
         return;
       }
@@ -104,6 +108,84 @@
           </div>
         </div>
       `}).join('');
+
+      await renderTodayRemaining(todayEl);
+    }
+
+    // --- 2a. LATER TODAY (shown alongside the active list, so you can
+    // see what's next without losing sight of what's live). Below it,
+    // a "Show Full Schedule" toggle always appears - collapsed by
+    // default, so the page length never grows with the size of the
+    // schedule. It's the person's own choice to open it. ---
+    async function renderTodayRemaining(container) {
+      const today = new Date().toISOString().split('T')[0];
+      const { data: todayData } = await _supabase.from('tournaments').select('*')
+        .eq('tournament_date', today)
+        .eq('is_active', false)
+        .order('start_time');
+
+      const todayRows = todayData || [];
+
+      let html = '';
+      if (todayRows.length > 0) {
+        html += `
+          <div class="schedule-date-header">Later Today</div>
+          ${todayRows.map(t => `
+            <div class="schedule-item">
+              <div class="name">${t.name}</div>
+              <div class="meta">${t.start_time || ''}${t.location ? ' // ' + t.location : ''}</div>
+            </div>
+          `).join('')}
+        `;
+      }
+
+      // Always offer the rest of the schedule (every future day, minus
+      // today's events already shown above), collapsed by default.
+      const { data: restData } = await _supabase.from('tournaments').select('*')
+        .eq('is_active', false)
+        .gte('tournament_date', today)
+        .order('tournament_date')
+        .order('start_time');
+
+      const restRows = (restData || []).filter(t => t.tournament_date !== today);
+
+      if (restRows.length > 0) {
+        const dayCount = new Set(restRows.map(t => t.tournament_date)).size;
+        const showLabel = `Show Full Schedule (+${dayCount} more day${dayCount === 1 ? '' : 's'})`;
+        html += `<div id="fullScheduleMore" style="display:none;">${scheduleGroupsHtml(restRows)}</div>`;
+        html += `
+          <button id="fullScheduleBtn" class="btn btn-outline-light w-100 mt-2 mb-4" data-show-label="${showLabel}" onclick="toggleFullSchedule()">
+            ${showLabel}
+          </button>
+        `;
+      }
+
+      container.innerHTML = html;
+    }
+
+    window.toggleFullSchedule = () => {
+      const more = document.getElementById('fullScheduleMore');
+      const btn = document.getElementById('fullScheduleBtn');
+      const isHidden = more.style.display === 'none';
+      more.style.display = isHidden ? 'block' : 'none';
+      btn.textContent = isHidden ? 'Show Fewer Days' : btn.dataset.showLabel;
+    };
+
+    // Shared renderer for a set of tournament rows grouped by date -
+    // used both here and in the no-events-live fallback below.
+    function scheduleGroupsHtml(rows) {
+      const groups = {};
+      rows.forEach(t => { (groups[t.tournament_date] = groups[t.tournament_date] || []).push(t); });
+      const dateFmt = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+      return Object.keys(groups).map(date => `
+        <div class="schedule-date-header">${dateFmt(date)}</div>
+        ${groups[date].map(t => `
+          <div class="schedule-item">
+            <div class="name">${t.name}</div>
+            <div class="meta">${t.start_time || ''}${t.location ? ' // ' + t.location : ''}</div>
+          </div>
+        `).join('')}
+      `).join('');
     }
 
     // --- 2b. UPCOMING SCHEDULE (shown when nothing is live) ---
@@ -317,11 +399,25 @@
     window.addEventListener('DOMContentLoaded', initMaps);
 
     // Initial Loaders
-    _supabase.channel('public').on('postgres_changes', {event:'*', schema:'public'}, () => { loadHome(); loadTicker(); loadBannerCarousel(); loadSiteLogo(); }).subscribe();
-    loadHome();
-    loadTicker();
-    loadBannerCarousel();
-    loadSiteLogo();
+    function refreshAll() {
+      loadHome();
+      loadTicker();
+      loadBannerCarousel();
+      loadSiteLogo();
+    }
+
+    _supabase.channel('public').on('postgres_changes', {event:'*', schema:'public'}, refreshAll).subscribe();
+    refreshAll();
+
+    // Safety net: realtime is the primary way this page updates, but a
+    // websocket can occasionally miss an update or quietly drop when a
+    // phone backgrounds the tab for a while - which is exactly when
+    // someone would notice a stale "ended" event still showing. Two
+    // belt-and-braces fixes rather than relying on realtime alone:
+    setInterval(refreshAll, 30000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') refreshAll();
+    });
   </script>
 </body>
 </html>

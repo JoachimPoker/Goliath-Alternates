@@ -41,19 +41,39 @@
     let tvTournaments = [];
     let tvPageIndex = 0;
     let tvPageTimer = null;
+    let tvActiveSnapshot = null;
 
     async function loadTV() {
       const { data } = await _supabase.from('tournaments').select('*').eq('is_active', true).order('created_at');
-      tvTournaments = data || [];
-      tvPageIndex = 0;
+      const rows = data || [];
+      const snapshot = JSON.stringify(rows);
 
-      if (tvPageTimer) { clearInterval(tvPageTimer); tvPageTimer = null; }
-
-      if (tvTournaments.length === 0) {
-        document.getElementById('tvPageDots').innerHTML = '';
+      if (rows.length === 0) {
+        // No active events - hand off to the schedule fallback, which
+        // has its own independent change-check so it can still pick up
+        // new upcoming events without needlessly re-rendering (and
+        // flickering) when nothing's actually changed.
+        if (snapshot !== tvActiveSnapshot) {
+          tvActiveSnapshot = snapshot;
+          tvTournaments = [];
+          tvPageIndex = 0;
+          if (tvPageTimer) { clearInterval(tvPageTimer); tvPageTimer = null; }
+          document.getElementById('tvPageDots').innerHTML = '';
+        }
         await renderUpcomingScheduleTV(document.getElementById('tvList'));
         return;
       }
+
+      if (snapshot === tvActiveSnapshot) return; // nothing changed - leave pagination exactly where it is
+      tvActiveSnapshot = snapshot;
+
+      // Entering/staying in active mode - stop any schedule-fallback
+      // page rotation left running from before.
+      if (schedulePageTimer) { clearInterval(schedulePageTimer); schedulePageTimer = null; }
+
+      tvTournaments = rows;
+      tvPageIndex = 0;
+      if (tvPageTimer) { clearInterval(tvPageTimer); tvPageTimer = null; }
 
       document.getElementById('listHeader').textContent = 'ALTERNATE LIST';
       renderTVPage();
@@ -165,7 +185,16 @@
       }
     }
 
-    // 1b. Upcoming schedule fallback (shown when nothing is live)
+    // 1b. Upcoming schedule fallback (shown when nothing is live) -
+    // paginated the same way the active list is: a fixed number of
+    // events per page, auto-rotating, rather than dumping the whole
+    // festival schedule into one shrunk-to-fit column.
+    const SCHEDULE_PAGE_SIZE = 6;
+    let scheduleSnapshot = null;
+    let scheduleRows = [];
+    let schedulePageIndex = 0;
+    let schedulePageTimer = null;
+
     async function renderUpcomingScheduleTV(container) {
       const today = new Date().toISOString().split('T')[0];
       const { data } = await _supabase.from('tournaments').select('*')
@@ -175,27 +204,62 @@
         .order('start_time');
 
       const rows = data || [];
+      const snapshot = JSON.stringify(rows);
+      if (snapshot === scheduleSnapshot) return; // nothing changed - leave the page rotation exactly where it is
+      scheduleSnapshot = snapshot;
+
       document.getElementById('listHeader').textContent = rows.length ? 'UPCOMING EVENTS' : 'ALTERNATE LIST';
 
+      if (schedulePageTimer) { clearInterval(schedulePageTimer); schedulePageTimer = null; }
+
       if (rows.length === 0) {
+        document.getElementById('tvPageDots').innerHTML = '';
         container.innerHTML = '<div class="tourn-title" style="color:#555">NO ACTIVE EVENTS</div>';
         return;
       }
 
-      const groups = {};
-      rows.forEach(t => { (groups[t.tournament_date] = groups[t.tournament_date] || []).push(t); });
+      scheduleRows = rows;
+      schedulePageIndex = 0;
+      renderSchedulePage();
+
+      const totalPages = Math.ceil(scheduleRows.length / SCHEDULE_PAGE_SIZE);
+      if (totalPages > 1) {
+        schedulePageTimer = setInterval(() => {
+          schedulePageIndex = (schedulePageIndex + 1) % totalPages;
+          renderSchedulePage();
+        }, 8000);
+      }
+    }
+
+    function renderSchedulePage() {
+      const container = document.getElementById('tvList');
+      const start = schedulePageIndex * SCHEDULE_PAGE_SIZE;
+      const pageItems = scheduleRows.slice(start, start + SCHEDULE_PAGE_SIZE);
 
       const dateFmt = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 
-      container.innerHTML = Object.keys(groups).map(date => `
-        <div class="schedule-date-header">${dateFmt(date)}</div>
-        ${groups[date].map(t => `
+      let lastDate = null;
+      let html = '';
+      pageItems.forEach(t => {
+        if (t.tournament_date !== lastDate) {
+          html += `<div class="schedule-date-header">${dateFmt(t.tournament_date)}</div>`;
+          lastDate = t.tournament_date;
+        }
+        html += `
           <div class="schedule-item">
             <div class="name">${t.name}</div>
             <div class="meta">${t.start_time || ''}${t.location ? ' // ' + t.location : ''}</div>
           </div>
-        `).join('')}
-      `).join('');
+        `;
+      });
+
+      container.innerHTML = html;
+
+      const totalPages = Math.ceil(scheduleRows.length / SCHEDULE_PAGE_SIZE);
+      const dotsEl = document.getElementById('tvPageDots');
+      dotsEl.innerHTML = totalPages > 1
+        ? Array.from({ length: totalPages }, (_, i) => `<span class="tv-page-dot ${i === schedulePageIndex ? 'active' : ''}"></span>`).join('')
+        : '';
 
       fitTVList();
     }
@@ -203,12 +267,16 @@
     // 2. Load Ticker Messages
 // public/display.html
 
+let displayTickerSnapshot = null;
 async function loadTicker() {
   const { data } = await _supabase.from('messages').select('*').eq('show_on_display', true).order('created_at');
   const tickerBox = document.getElementById('tickerText');
   const wrap = document.querySelector('.ticker-wrap');
   const split = document.querySelector('.split-screen');
   const list = data || [];
+  const snapshot = JSON.stringify(list);
+  if (snapshot === displayTickerSnapshot) return; // nothing changed - don't restart the scroll
+  displayTickerSnapshot = snapshot;
 
   if (list.length === 0) {
     wrap.style.display = 'none';
@@ -229,10 +297,16 @@ async function loadTicker() {
     let mapIndex = 0;
     let mapTimer = null;
     let mapActiveIsA = true;
+    let mapImagesSnapshot = null;
 
     async function loadMapCarousel() {
       const { data } = await _supabase.from('display_carousel_images').select('*').eq('is_active', true).order('sort_order');
-      mapImages = data || [];
+      const images = data || [];
+      const snapshot = JSON.stringify(images);
+      if (snapshot === mapImagesSnapshot) return; // nothing changed - let the rotation keep going undisturbed
+      mapImagesSnapshot = snapshot;
+
+      mapImages = images;
       mapIndex = 0;
       if (mapTimer) clearTimeout(mapTimer);
 
@@ -292,6 +366,12 @@ async function loadTicker() {
     window.addEventListener('resize', () => fitTVList());
 
     refreshDisplay();
+
+    // Safety net: this screen runs unattended for hours with nobody
+    // there to notice or refresh it if a realtime update is ever missed.
+    // Poll on a fixed interval regardless, so it can never drift stale
+    // for long.
+    setInterval(refreshDisplay, 60000);
   </script>
 </body>
 </html>
