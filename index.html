@@ -34,7 +34,7 @@
       
       <div id="mapContainer" style="position:relative; border: 2px solid #444; border-radius:8px; overflow:hidden; height: 400px; background: #111; cursor: grab;">
         <div id="hallLabel" class="hall-label"></div>
-        <div id="svgWrapper-main" class="hall-map">
+        <div id="svgWrapper-hall3" class="hall-map">
            <p class="text-secondary mt-5" id="mapLoadingText">Loading map...</p>
         </div>
         <div id="svgWrapper-hall5" class="hall-map hall-hidden"></div>
@@ -314,12 +314,50 @@
 
     // --- 3. INTERACTIVE MAP LOGIC ---
     const HALLS = [
-      { key: 'main', file: 'main-hall.svg', label: 'Main Hall' },
+      { key: 'hall3', file: 'hall3.svg', label: 'Hall 3' },
       { key: 'hall5', file: 'hall5.svg', label: 'Hall 5' },
       { key: 'hall4', file: 'hall4.svg', label: 'Hall 4' }
     ];
     const hallState = {};
-    let currentHallKey = 'main';
+    let currentHallKey = 'hall3';
+
+    // Illustrator-exported SVGs tend to reuse generic class names (st0,
+    // st1, cls-1...) across separately-exported files. An embedded
+    // <style> block inside an injected SVG applies globally to the whole
+    // page, not just to its own SVG - so once multiple hall files are
+    // loaded together, two files sharing a class name silently override
+    // each other's colors (this was the actual cause of Hall 5 showing
+    // a white background: hall4.svg's ".st2 { fill:#fff }" was
+    // clobbering hall5.svg's own ".st2 { fill:none }", which its
+    // boundary and every table rely on). Renaming every class per-hall
+    // here avoids that regardless of what naming scheme was exported.
+    function namespaceSvgClasses(svgText, key) {
+      const styleMatch = svgText.match(/<style>([\s\S]*?)<\/style>/);
+      if (!styleMatch) return svgText;
+
+      const styleBlock = styleMatch[1];
+      const classNames = new Set();
+      const classRegex = /\.([a-zA-Z0-9_-]+)/g;
+      let m;
+      while ((m = classRegex.exec(styleBlock)) !== null) classNames.add(m[1]);
+      if (classNames.size === 0) return svgText;
+
+      const renameMap = {};
+      classNames.forEach(cls => { renameMap[cls] = `${cls}-${key}`; });
+
+      let newStyleBlock = styleBlock;
+      classNames.forEach(cls => {
+        newStyleBlock = newStyleBlock.replace(new RegExp(`\\.${cls}\\b`, 'g'), `.${renameMap[cls]}`);
+      });
+      let result = svgText.replace(styleBlock, newStyleBlock);
+
+      result = result.replace(/class="([^"]*)"/g, (full, classList) => {
+        const updated = classList.split(/\s+/).map(c => renameMap[c] || c).join(' ');
+        return `class="${updated}"`;
+      });
+
+      return result;
+    }
 
     async function initMaps() {
       for (const hall of HALLS) {
@@ -329,7 +367,8 @@
         try {
           const response = await fetch(hall.file);
           if (!response.ok) throw new Error("File not found");
-          const svgText = await response.text();
+          let svgText = await response.text();
+          svgText = namespaceSvgClasses(svgText, hall.key);
 
           const mapDiv = document.createElement('div');
           mapDiv.style.width = '100%';
@@ -342,12 +381,14 @@
             svgElement.style.height = '100%';
             svgElement.id = `svg-${hall.key}`;
 
-            // Each hall's SVG was exported with the same "entrance-main"
-            // id - fine on its own, but all three get loaded into the
-            // page at once, so rename it per-hall here to avoid a
-            // duplicate-id collision.
-            const entranceEl = svgElement.querySelector('#entrance-main');
-            if (entranceEl) entranceEl.id = `entrance-${hall.key}`;
+            // Each hall's own entrance marker should already be named
+            // entrance-hall3/hall4/hall5 in the source file. Fallback
+            // below just in case any file still has the old shared
+            // "entrance-main" id from before per-hall renaming.
+            if (!svgElement.querySelector(`#entrance-${hall.key}`)) {
+              const legacyEntrance = svgElement.querySelector('#entrance-main');
+              if (legacyEntrance) legacyEntrance.id = `entrance-${hall.key}`;
+            }
           }
           wrapper.appendChild(mapDiv);
 
@@ -366,7 +407,7 @@
         if (state && state.panzoom) state.panzoom.zoomWithWheel(e);
       });
 
-      showHall('main');
+      showHall('hall3');
     }
 
     // Panzoom needs the element visible to measure it correctly, so it's
