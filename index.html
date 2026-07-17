@@ -337,7 +337,13 @@
 
       const styleBlock = styleMatch[1];
       const classNames = new Set();
-      const classRegex = /\.([a-zA-Z0-9_-]+)/g;
+      // Class selectors always start with a letter - this matters
+      // because without it, a decimal value like "font-size: 43.8px"
+      // gets misread as a class selector ".8px", and renaming it then
+      // corrupts the actual value into "43.8px-hall5" (invalid CSS,
+      // silently falls back to the browser default size). This is
+      // exactly what was making Hall 5's table numbers render tiny.
+      const classRegex = /\.([a-zA-Z][a-zA-Z0-9_-]*)/g;
       let m;
       while ((m = classRegex.exec(styleBlock)) !== null) classNames.add(m[1]);
       if (classNames.size === 0) return svgText;
