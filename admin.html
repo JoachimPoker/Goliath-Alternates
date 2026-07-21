@@ -14,6 +14,11 @@
     #dashboardSection, #loginSection { display: none; }
     #loginSection { max-width: 400px; margin: 100px auto; }
 
+    /* Bootstrap's text-warning (bright yellow) has poor contrast on a
+       white background - this is a darker amber that's actually
+       readable while still reading as "highlighted/special" info. */
+    .gtd-text { color: #a3690a; }
+
     .status-select { font-weight: bold; border: 2px solid #aaa; }
 
     /* --- Top bar: sticky, wraps cleanly on narrow screens --- */
@@ -90,6 +95,25 @@
 
     <div class="admin-main">
 
+      <!-- WEBSITE TRAFFIC -->
+      <div class="card p-3 mb-4 shadow-sm">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+          <h6 class="mb-0">📈 Website Traffic</h6>
+          <span class="text-muted small">Website only, once per visit</span>
+        </div>
+        <div class="d-flex gap-4 flex-wrap">
+          <div>
+            <div class="fs-4 fw-bold" id="statsToday">-</div>
+            <div class="text-muted small">Today</div>
+          </div>
+          <div>
+            <div class="fs-4 fw-bold" id="statsTotal">-</div>
+            <div class="text-muted small">All-time</div>
+          </div>
+        </div>
+        <div id="statsBreakdown" class="mt-2 small"></div>
+      </div>
+
       <!-- LIVE EVENTS -->
       <h4 class="mb-3 text-success">🟢 Live Events</h4>
       <div id="liveList" class="row g-3 mb-4"></div>
@@ -106,10 +130,14 @@
               <div class="col-12 col-md-4"><input id="newDate" type="date" class="form-control"></div>
               <div class="col-12 col-md-8"><input id="newName" class="form-control" placeholder="Event Name"></div>
             </div>
-            <div class="row g-2">
+            <div class="row g-2 mb-2">
               <div class="col-6 col-md-3"><input id="newTime" class="form-control" placeholder="Time (12:00)"></div>
               <div class="col-6 col-md-3"><input id="newLoc" class="form-control" placeholder="Loc (TBD)"></div>
-              <div class="col-12 col-md-6"><button onclick="addToSchedule()" class="btn btn-secondary w-100">Add to Calendar</button></div>
+              <div class="col-6 col-md-3"><input id="newGuarantee" class="form-control" placeholder="Guarantee (£50,000 GTD)"></div>
+              <div class="col-6 col-md-3"><input id="newBuyIn" class="form-control" placeholder="Buy-in (£125+£25)"></div>
+            </div>
+            <div class="row g-2">
+              <div class="col-12"><button onclick="addToSchedule()" class="btn btn-secondary w-100">Add to Calendar</button></div>
             </div>
           </div>
           <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
@@ -160,20 +188,19 @@
 
           <div class="card p-3 mb-3 shadow-sm">
             <h6 class="mb-2">Live Screen Background</h6>
-            <p class="text-muted small mb-2">Behind the header and stations while at least one station is open. Design at 1920x384 for a clean full-bleed fit with no cropping. Leave blank to use the default gradient.</p>
-            <div id="regdeskBgPreviewWrap" class="mb-2"></div>
-            <div class="d-flex flex-wrap gap-2">
-              <input type="file" id="regdeskBgFile" class="form-control" accept="image/*" style="max-width:260px;">
-              <button onclick="uploadRegdeskBg('regdeskBgFile', 'background_url', 'background_path')" class="btn btn-primary">Upload</button>
-              <button onclick="clearRegdeskBg('background_url', 'background_path')" class="btn btn-outline-secondary">Remove</button>
+            <p class="text-muted small mb-2">Behind the header and stations while at least one station is open. Add as many as you like - each has its own display duration. With just one, it shows statically (no rotation). Design at 1920x384 for a clean full-bleed fit. Leave empty to use the default gradient.</p>
+            <div class="d-flex flex-wrap gap-2 mb-2">
+              <input type="file" id="regdeskLiveFile" class="form-control" accept="image/*,video/*" style="max-width:260px;">
+              <button onclick="uploadRegdeskLiveImage()" class="btn btn-primary">Upload</button>
             </div>
+            <div id="regdeskLiveWrap"></div>
           </div>
 
           <div class="card p-3 mb-3 shadow-sm">
             <h6 class="mb-2">Idle Screen Images</h6>
-            <p class="text-muted small mb-2">Shown full-screen when all 4 stations are closed. Add as many as you like - each has its own display duration. With just one, it shows statically (no rotation). Design at 1920x384 for a clean full-bleed fit.</p>
+            <p class="text-muted small mb-2">Shown full-screen when all 4 stations are closed. Add as many as you like - each has its own display duration (images and GIFs) or plays through once per loop (video). With just one, it shows statically. Design at 1920x384 for a clean full-bleed fit.</p>
             <div class="d-flex flex-wrap gap-2 mb-2">
-              <input type="file" id="regdeskIdleFile" class="form-control" accept="image/*" style="max-width:260px;">
+              <input type="file" id="regdeskIdleFile" class="form-control" accept="image/*,video/*" style="max-width:260px;">
               <button onclick="uploadRegdeskIdleImage()" class="btn btn-primary">Upload</button>
             </div>
             <div id="regdeskIdleWrap"></div>
@@ -205,7 +232,7 @@
           <div class="card p-3 mb-4 shadow-sm">
             <p class="text-muted small mb-2">Rotating carousel on the mobile website only. Design at <strong>1200x400px (3:1)</strong> so they fill the space edge-to-edge with no cropping.</p>
             <div class="mb-2">
-              <input type="file" id="bannerFile" class="form-control" accept="image/*">
+              <input type="file" id="bannerFile" class="form-control" accept="image/*,video/*">
             </div>
             <div class="d-flex flex-wrap gap-2 mb-3">
               <input type="url" id="bannerLink" class="form-control" placeholder="Link (optional - tap the banner opens this)" style="flex:1 1 200px;">
@@ -218,7 +245,7 @@
           <div class="card p-3 shadow-sm">
             <p class="text-muted small mb-2">Replaces the floor map area on the Alt Desk screen. Add floor plans, ads, whatever you like - each has its own duration. Images are shown in full with no cropping regardless of shape.</p>
             <div class="d-flex flex-wrap gap-2 mb-2">
-              <input type="file" id="displayCarouselFile" class="form-control" accept="image/*" style="max-width:260px;">
+              <input type="file" id="displayCarouselFile" class="form-control" accept="image/*,video/*" style="max-width:260px;">
               <button onclick="uploadDisplayCarouselImage()" class="btn btn-primary">Upload</button>
             </div>
             <div id="displayCarouselWrap"></div>
@@ -243,6 +270,8 @@
           <div class="mb-2"><label>Start Time</label><input id="editTime" class="form-control"></div>
           <div class="mb-2"><label>Location</label><input id="editLoc" class="form-control"></div>
           <div class="mb-2"><label>Date</label><input id="editDate" type="date" class="form-control"></div>
+          <div class="mb-2"><label>Guarantee</label><input id="editGuarantee" class="form-control" placeholder="£50,000 GTD"></div>
+          <div class="mb-2"><label>Buy-in</label><input id="editBuyIn" class="form-control" placeholder="£125+£25"></div>
           <button onclick="saveEdit()" class="btn btn-primary w-100 mt-3">Save Changes</button>
         </div>
       </div>
@@ -295,15 +324,34 @@
     window.logout = async () => { await _supabase.auth.signOut(); location.reload(); }
 
     // --- RENDER ---
+    // Escapes a string for safe use inside an onclick="..." attribute
+    // that itself contains a JS string literal, e.g. onclick="fn('VALUE')".
+    // The old approach replaced ' with the HTML entity &apos; - but the
+    // browser decodes HTML entities in attribute values BEFORE the JS
+    // ever runs, turning &apos; straight back into a raw ' and breaking
+    // the string literal it's inside (exactly what happened with
+    // "Arian's Home Game" - the Edit button's onclick became invalid
+    // JS and silently failed for that row only). Backslash-escaping the
+    // apostrophe for JS, and separately HTML-escaping any double quotes
+    // so they don't break the outer onclick="..." attribute boundary,
+    // fixes both layers correctly.
+    function jsAttrEscape(str) {
+      return String(str || '')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '&quot;');
+    }
+
     async function refreshAdmin() {
       const { data: tours } = await _supabase.from('tournaments').select('*').order('tournament_date', {ascending: true}).order('start_time', {ascending: true});
       const msgs = await _supabase.from('messages').select('*').order('created_at');
       refreshStations();
       refreshBanners();
-      refreshRegdeskBackground();
+      refreshRegdeskLiveImages();
       refreshRegdeskIdleImages();
       refreshSiteLogo();
       refreshDisplayCarousel();
+      loadStats();
 
       const liveDiv = document.getElementById('liveList');
       liveDiv.innerHTML = '';
@@ -311,21 +359,24 @@
 
       // RENDER TOURNAMENTS
       (tours || []).forEach(t => {
-        const safeName = t.name.replace(/'/g, "&apos;");
-        const safeLoc = (t.location || '').replace(/'/g, "&apos;");
+        const safeName = jsAttrEscape(t.name);
+        const safeLoc = jsAttrEscape(t.location || '');
+        const safeGuarantee = jsAttrEscape(t.guarantee || '');
+        const safeBuyIn = jsAttrEscape(t.buy_in || '');
         
         if (t.is_active) {
           const showNum = (t.status_mode === 'BATCH' || t.status_mode === 'BREAK');
           liveDiv.innerHTML += `
           <div class="col-12">
             <div class="card p-3 border shadow-sm border-success" style="border-width:2px;">
-              <div class="d-flex justify-content-between align-items-center mb-2">
-                <div>
+              <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                <div style="flex:1 1 auto; min-width:0;">
                    <h5 class="mb-0 fw-bold">${t.name}</h5>
-                   <small class="text-muted">${t.start_time} @ ${t.location || 'TBD'}</small>
+                   ${(t.guarantee || t.buy_in) ? `<div class="small gtd-text fw-bold">${[t.guarantee, t.buy_in ? 'Buy-in: ' + t.buy_in : ''].filter(Boolean).join(' // ')}</div>` : ''}
+                   <small class="text-muted">${t.start_time}${t.location ? ' // ' + t.location : ''}</small>
                 </div>
-                <div>
-                  <button class="btn btn-sm btn-outline-secondary" onclick="openEdit('${t.id}', '${safeName}', '${t.start_time}', '${safeLoc}', '${t.tournament_date}')">Edit</button>
+                <div class="d-flex gap-2" style="flex:0 0 auto;">
+                  <button class="btn btn-sm btn-outline-secondary" onclick="openEdit('${t.id}', '${safeName}', '${t.start_time}', '${safeLoc}', '${t.tournament_date}', '${safeGuarantee}', '${safeBuyIn}')">Edit</button>
                   <button class="btn btn-sm btn-outline-danger" onclick="toggleActive('${t.id}', false)">End Event</button>
                 </div>
               </div>
@@ -403,21 +454,26 @@
         upcomingDiv.innerHTML = `<div class="list-group-item text-muted text-center small">${upcomingShowPast ? 'No events at all yet.' : 'Nothing upcoming right now.'}</div>`;
       } else {
         upcomingDiv.innerHTML = pageRows.map(t => {
-          const safeName = t.name.replace(/'/g, "&apos;");
-          const safeLoc = (t.location || '').replace(/'/g, "&apos;");
+          const safeName = jsAttrEscape(t.name);
+          const safeLoc = jsAttrEscape(t.location || '');
+          const safeGuarantee = jsAttrEscape(t.guarantee || '');
+          const safeBuyIn = jsAttrEscape(t.buy_in || '');
           const isPast = t.tournament_date && t.tournament_date < today;
           return `
-          <div class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2 ${isPast ? 'opacity-75' : ''}">
-            <div>
-              <span class="badge bg-light text-dark border mr-2">${t.tournament_date || 'No Date'}</span>
-              <strong>${t.name}</strong>
-              <span class="text-muted small">(${t.start_time})</span>
+          <div class="list-group-item ${isPast ? 'opacity-75' : ''}">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div style="flex:1 1 auto; min-width:0;">
+                <span class="badge bg-light text-dark border me-2">${t.tournament_date || 'No Date'}</span>
+                <strong>${t.name}</strong>
+              </div>
+              <div class="d-flex gap-2" style="flex:0 0 auto;">
+                <button class="btn btn-sm btn-outline-secondary" onclick="openEdit('${t.id}', '${safeName}', '${t.start_time}', '${safeLoc}', '${t.tournament_date}', '${safeGuarantee}', '${safeBuyIn}')">Edit</button>
+                <button class="btn btn-sm btn-success fw-bold" onclick="toggleActive('${t.id}', true)">GO LIVE</button>
+                <button class="btn btn-sm text-danger border-0" onclick="deleteTourn('${t.id}')">X</button>
+              </div>
             </div>
-            <div>
-              <button class="btn btn-sm btn-outline-secondary me-2" onclick="openEdit('${t.id}', '${safeName}', '${t.start_time}', '${safeLoc}', '${t.tournament_date}')">Edit</button>
-              <button class="btn btn-sm btn-success fw-bold" onclick="toggleActive('${t.id}', true)">GO LIVE</button>
-              <button class="btn btn-sm text-danger border-0" onclick="deleteTourn('${t.id}')">X</button>
-            </div>
+            ${(t.guarantee || t.buy_in) ? `<div class="small gtd-text fw-bold mt-1">${[t.guarantee, t.buy_in ? 'Buy-in: ' + t.buy_in : ''].filter(Boolean).join(' // ')}</div>` : ''}
+            <div class="text-muted small mt-1">${t.start_time}${t.location ? ' // ' + t.location : ''}</div>
           </div>`;
         }).join('');
       }
@@ -444,13 +500,41 @@
       renderUpcomingList();
     };
 
+    // --- WEBSITE TRAFFIC ---
+    // Fetches every logged view and aggregates client-side - simple and
+    // fine at festival scale. If this ever needs to scale much further,
+    // a SQL count/group-by via an RPC would be the next step instead of
+    // pulling every row.
+    async function loadStats() {
+      const { data } = await _supabase.from('page_views').select('created_at');
+      const rows = data || [];
+      const today = new Date().toISOString().split('T')[0];
+
+      document.getElementById('statsTotal').textContent = rows.length;
+      document.getElementById('statsToday').textContent = rows.filter(r => r.created_at.startsWith(today)).length;
+
+      const byDay = {};
+      rows.forEach(r => {
+        const d = r.created_at.split('T')[0];
+        byDay[d] = (byDay[d] || 0) + 1;
+      });
+      const last7 = Object.keys(byDay).sort().slice(-7).reverse();
+      document.getElementById('statsBreakdown').innerHTML = last7.map(d => `
+        <div class="d-flex justify-content-between border-bottom py-1">
+          <span class="text-muted">${d}</span><span class="fw-bold">${byDay[d]}</span>
+        </div>
+      `).join('');
+    }
+
     // --- ACTIONS ---
-    window.openEdit = (id, name, time, loc, date) => {
+    window.openEdit = (id, name, time, loc, date, guarantee, buyIn) => {
       document.getElementById('editId').value = id;
       document.getElementById('editName').value = name;
       document.getElementById('editTime').value = time;
       document.getElementById('editLoc').value = loc === 'undefined' ? '' : loc;
       document.getElementById('editDate').value = date;
+      document.getElementById('editGuarantee').value = (guarantee === 'undefined' || guarantee === undefined) ? '' : guarantee;
+      document.getElementById('editBuyIn').value = (buyIn === 'undefined' || buyIn === undefined) ? '' : buyIn;
       editModal.show();
     };
 
@@ -460,7 +544,9 @@
         name: document.getElementById('editName').value,
         start_time: document.getElementById('editTime').value,
         location: document.getElementById('editLoc').value,
-        tournament_date: document.getElementById('editDate').value
+        tournament_date: document.getElementById('editDate').value,
+        guarantee: document.getElementById('editGuarantee').value || null,
+        buy_in: document.getElementById('editBuyIn').value || null
       }).eq('id', id);
 
       if(error) alert("Save Failed: " + error.message);
@@ -499,9 +585,14 @@
         start_time: document.getElementById('newTime').value,
         location: loc === '' ? 'TBD' : loc,
         tournament_date: date,
+        guarantee: document.getElementById('newGuarantee').value || null,
+        buy_in: document.getElementById('newBuyIn').value || null,
         is_active: false
       }]);
-      document.getElementById('newName').value = ''; refreshAdmin();
+      document.getElementById('newName').value = '';
+      document.getElementById('newGuarantee').value = '';
+      document.getElementById('newBuyIn').value = '';
+      refreshAdmin();
     };
     window.updateNum = async (id) => { const val = document.getElementById(`input-${id}`).value; await _supabase.from('tournaments').update({ current_alt_number: val }).eq('id', id); refreshAdmin(); };
     window.adjustNum = (id, diff) => { const el = document.getElementById(`input-${id}`); el.value = Math.max(0, parseInt(el.value||0) + diff); };
@@ -519,60 +610,98 @@
     };
     window.delMsg = async (id) => { await _supabase.from('messages').delete().eq('id', id); refreshAdmin(); };
 
-    // --- REG DESK LIVE BACKGROUND IMAGE ---
-    async function refreshRegdeskBackground() {
-      const { data } = await _supabase.from('regdesk_settings').select('*').eq('id', 1).maybeSingle();
-      renderBgPreview('regdeskBgPreviewWrap', data && data.background_url);
+    // --- REG DESK LIVE BACKGROUND IMAGES (multiple, each with its own duration) ---
+    window._liveImagesCache = [];
+    async function refreshRegdeskLiveImages() {
+      const { data } = await _supabase.from('regdesk_live_images').select('*').order('sort_order');
+      const list = data || [];
+      window._liveImagesCache = list;
+      const wrap = document.getElementById('regdeskLiveWrap');
+
+      if (list.length === 0) {
+        wrap.innerHTML = '<p class="text-muted small mb-0">No images yet - the live screen will just show the default gradient.</p>';
+        return;
+      }
+
+      wrap.innerHTML = list.map((img, idx) => `
+        <div class="border rounded p-2 mb-2 bg-white">
+          <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+            ${img.media_type === 'video'
+              ? `<video src="${img.image_url}" muted style="height:50px;width:90px;object-fit:cover;border-radius:4px;"></video>`
+              : `<img src="${img.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">`}
+            <span class="badge bg-secondary">${img.media_type === 'video' ? '🎬 Video' : '🖼️ Image'}</span>
+            <div class="input-group input-group-sm" style="max-width:140px;">
+              <input type="number" min="1" class="form-control" id="liveDur-${img.id}" value="${img.duration_seconds}">
+              <span class="input-group-text">sec</span>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" onclick="saveLiveImageDuration('${img.id}')">Save</button>
+          </div>
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <button class="btn btn-sm btn-light border icon-btn" onclick="moveLiveImage(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
+            <button class="btn btn-sm btn-light border icon-btn" onclick="moveLiveImage(${idx}, 1)" ${idx === list.length - 1 ? 'disabled' : ''}>↓</button>
+            <span class="msg-toggle icon-btn ${img.is_active ? 'active' : ''}" title="Active in rotation" onclick="toggleLiveImage('${img.id}', ${!img.is_active})">👁️</span>
+            <div class="flex-grow-1"></div>
+            <button class="btn btn-sm text-danger border icon-btn" onclick="deleteLiveImage('${img.id}', '${img.storage_path}')">X</button>
+          </div>
+        </div>
+      `).join('');
     }
 
-    function renderBgPreview(elId, url) {
-      const wrap = document.getElementById(elId);
-      wrap.innerHTML = url
-        ? `<img src="${url}" style="height:70px;max-width:100%;object-fit:cover;border-radius:4px;border:1px solid #ddd;">`
-        : `<p class="text-muted small mb-0">No background set - using the default gradient.</p>`;
-    }
-
-    window.uploadRegdeskBg = async (fileInputId, urlField, pathField) => {
-      const fileInput = document.getElementById(fileInputId);
+    window.uploadRegdeskLiveImage = async () => {
+      const fileInput = document.getElementById('regdeskLiveFile');
       const file = fileInput.files[0];
-      if (!file) { alert('Choose an image first'); return; }
+      if (!file) { alert('Choose a file first'); return; }
 
-      const { data: existing } = await _supabase.from('regdesk_settings').select('*').eq('id', 1).maybeSingle();
-
+      const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
       const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
-      const path = `bg-${Date.now()}-${safeName}`;
+      const path = `live-${Date.now()}-${safeName}`;
 
       const { error: upErr } = await _supabase.storage.from('banners').upload(path, file);
       if (upErr) { alert('Upload failed: ' + upErr.message); return; }
 
       const { data: pub } = _supabase.storage.from('banners').getPublicUrl(path);
+      const maxOrder = (window._liveImagesCache || []).reduce((m, i) => Math.max(m, i.sort_order || 0), 0);
 
-      const patch = { id: 1, updated_at: new Date().toISOString() };
-      patch[urlField] = pub.publicUrl;
-      patch[pathField] = path;
-
-      const { error: upsertErr } = await _supabase.from('regdesk_settings').upsert([patch]);
-      if (upsertErr) { alert('Save failed: ' + upsertErr.message); return; }
-
-      const oldPath = existing && existing[pathField];
-      if (oldPath) await _supabase.storage.from('banners').remove([oldPath]);
+      const { error: insErr } = await _supabase.from('regdesk_live_images').insert([{
+        image_url: pub.publicUrl,
+        storage_path: path,
+        duration_seconds: 8,
+        is_active: true,
+        sort_order: maxOrder + 1,
+        media_type: mediaType
+      }]);
+      if (insErr) alert('Save failed: ' + insErr.message);
 
       fileInput.value = '';
-      refreshRegdeskBackground();
+      refreshRegdeskLiveImages();
     };
 
-    window.clearRegdeskBg = async (urlField, pathField) => {
-      const { data: existing } = await _supabase.from('regdesk_settings').select('*').eq('id', 1).maybeSingle();
+    window.saveLiveImageDuration = async (id) => {
+      const val = parseInt(document.getElementById(`liveDur-${id}`).value) || 8;
+      await _supabase.from('regdesk_live_images').update({ duration_seconds: val }).eq('id', id);
+      refreshRegdeskLiveImages();
+    };
 
-      const patch = { id: 1, updated_at: new Date().toISOString() };
-      patch[urlField] = null;
-      patch[pathField] = null;
-      await _supabase.from('regdesk_settings').upsert([patch]);
+    window.toggleLiveImage = async (id, val) => {
+      await _supabase.from('regdesk_live_images').update({ is_active: val }).eq('id', id);
+      refreshRegdeskLiveImages();
+    };
 
-      const oldPath = existing && existing[pathField];
-      if (oldPath) await _supabase.storage.from('banners').remove([oldPath]);
+    window.deleteLiveImage = async (id, path) => {
+      if (!confirm('Delete this image?')) return;
+      await _supabase.storage.from('banners').remove([path]);
+      await _supabase.from('regdesk_live_images').delete().eq('id', id);
+      refreshRegdeskLiveImages();
+    };
 
-      refreshRegdeskBackground();
+    window.moveLiveImage = async (idx, dir) => {
+      const list = window._liveImagesCache || [];
+      const otherIdx = idx + dir;
+      if (otherIdx < 0 || otherIdx >= list.length) return;
+      const a = list[idx], b = list[otherIdx];
+      await _supabase.from('regdesk_live_images').update({ sort_order: b.sort_order }).eq('id', a.id);
+      await _supabase.from('regdesk_live_images').update({ sort_order: a.sort_order }).eq('id', b.id);
+      refreshRegdeskLiveImages();
     };
 
     // --- REG DESK IDLE IMAGES (multiple, each with its own duration) ---
@@ -591,7 +720,10 @@
       wrap.innerHTML = list.map((img, idx) => `
         <div class="border rounded p-2 mb-2 bg-white">
           <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-            <img src="${img.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">
+            ${img.media_type === 'video'
+              ? `<video src="${img.image_url}" muted style="height:50px;width:90px;object-fit:cover;border-radius:4px;"></video>`
+              : `<img src="${img.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">`}
+            <span class="badge bg-secondary">${img.media_type === 'video' ? '🎬 Video' : '🖼️ Image'}</span>
             <div class="input-group input-group-sm" style="max-width:140px;">
               <input type="number" min="1" class="form-control" id="idleDur-${img.id}" value="${img.duration_seconds}">
               <span class="input-group-text">sec</span>
@@ -612,8 +744,9 @@
     window.uploadRegdeskIdleImage = async () => {
       const fileInput = document.getElementById('regdeskIdleFile');
       const file = fileInput.files[0];
-      if (!file) { alert('Choose an image first'); return; }
+      if (!file) { alert('Choose a file first'); return; }
 
+      const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
       const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
       const path = `idle-${Date.now()}-${safeName}`;
 
@@ -628,7 +761,8 @@
         storage_path: path,
         duration_seconds: 8,
         is_active: true,
-        sort_order: maxOrder + 1
+        sort_order: maxOrder + 1,
+        media_type: mediaType
       }]);
       if (insErr) alert('Save failed: ' + insErr.message);
 
@@ -722,7 +856,10 @@
       wrap.innerHTML = list.map((img, idx) => `
         <div class="border rounded p-2 mb-2 bg-white">
           <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-            <img src="${img.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">
+            ${img.media_type === 'video'
+              ? `<video src="${img.image_url}" muted style="height:50px;width:90px;object-fit:cover;border-radius:4px;"></video>`
+              : `<img src="${img.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">`}
+            <span class="badge bg-secondary">${img.media_type === 'video' ? '🎬 Video' : '🖼️ Image'}</span>
             <div class="input-group input-group-sm" style="max-width:140px;">
               <input type="number" min="1" class="form-control" id="dispDur-${img.id}" value="${img.duration_seconds}">
               <span class="input-group-text">sec</span>
@@ -743,8 +880,9 @@
     window.uploadDisplayCarouselImage = async () => {
       const fileInput = document.getElementById('displayCarouselFile');
       const file = fileInput.files[0];
-      if (!file) { alert('Choose an image first'); return; }
+      if (!file) { alert('Choose a file first'); return; }
 
+      const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
       const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
       const path = `display-${Date.now()}-${safeName}`;
 
@@ -759,7 +897,8 @@
         storage_path: path,
         duration_seconds: 10,
         is_active: true,
-        sort_order: maxOrder + 1
+        sort_order: maxOrder + 1,
+        media_type: mediaType
       }]);
       if (insErr) alert('Save failed: ' + insErr.message);
 
@@ -847,7 +986,10 @@
       wrap.innerHTML = list.map((b, idx) => `
         <div class="border rounded p-2 mb-2 bg-white">
           <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-            <img src="${b.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">
+            ${b.media_type === 'video'
+              ? `<video src="${b.image_url}" muted style="height:50px;width:90px;object-fit:cover;border-radius:4px;"></video>`
+              : `<img src="${b.image_url}" style="height:50px;width:90px;object-fit:cover;border-radius:4px;">`}
+            <span class="badge bg-secondary">${b.media_type === 'video' ? '🎬 Video' : '🖼️ Image'}</span>
             <div class="flex-grow-1"></div>
             <button class="btn btn-sm btn-light border icon-btn" onclick="moveBanner(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
             <button class="btn btn-sm btn-light border icon-btn" onclick="moveBanner(${idx}, 1)" ${idx === list.length - 1 ? 'disabled' : ''}>↓</button>
@@ -867,8 +1009,9 @@
       const fileInput = document.getElementById('bannerFile');
       const linkInput = document.getElementById('bannerLink');
       const file = fileInput.files[0];
-      if (!file) { alert('Choose an image first'); return; }
+      if (!file) { alert('Choose a file first'); return; }
 
+      const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
       const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
       const path = `${Date.now()}-${safeName}`;
 
@@ -883,7 +1026,8 @@
         storage_path: path,
         link_url: linkInput.value.trim() || null,
         is_active: true,
-        sort_order: maxOrder + 1
+        sort_order: maxOrder + 1,
+        media_type: mediaType
       }]);
       if (insErr) alert('Save failed: ' + insErr.message);
 

@@ -339,12 +339,23 @@ body {
   text-transform: uppercase;
   margin-top: 2px;
 }
+.schedule-gtd {
+  color: var(--text-gold);
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  margin-top: 3px;
+}
+.schedule-gtd-inline {
+  color: var(--text-gold);
+}
 
 /* TV-sized variant, reuses the same class names inside .split-screen */
 .split-screen .schedule-date-header { font-size: 3vh; margin: 3vh 0 1.5vh; }
 .split-screen .schedule-item { padding: 1.5vh 2vh; margin-bottom: 1.5vh; }
 .split-screen .schedule-item .name { font-size: 3.2vh; }
 .split-screen .schedule-item .meta { font-size: 2vh; margin-top: 0.5vh; }
+.split-screen .schedule-gtd { font-size: 1.9vh; margin-top: 0.6vh; }
 
 /* === AD BANNER CAROUSEL (mobile hub) ===
    Design banners at 1200x400px (3:1) and they'll fill this edge-to-edge
@@ -367,7 +378,7 @@ body {
 }
 .banner-slide.active { opacity: 1; }
 .banner-slide a { display: block; width: 100%; height: 100%; }
-.banner-slide img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.banner-slide img, .banner-slide video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .banner-dots {
   position: absolute;
   bottom: 8px; left: 0; right: 0;
@@ -400,17 +411,26 @@ body.regdesk-body {
   background: radial-gradient(circle at 12% 15%, #201955 0%, #100c2e 55%, #08061a 100%);
 }
 
-/* Custom background image, set from the admin panel. Design it at
-   1920x384 (the wall's native resolution) so it shows full-bleed with
-   no cropping or repositioning. */
-.regdesk-bg-image {
+/* Custom background image/video(s), set from the admin panel. Slide
+   elements are created dynamically (see regdesk.html JS) so a mix of
+   images and videos can crossfade the same way. Design at 1920x384
+   (the wall's native resolution) so it shows full-bleed with no
+   cropping or repositioning. */
+.regdesk-bg-slides {
   position: absolute;
   inset: 0;
   z-index: 1;
-  background-size: cover;
-  background-position: center center;
-  background-repeat: no-repeat;
 }
+.regdesk-bg-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+.regdesk-bg-image.active { opacity: 1; }
 
 /* Giant faint watermark for texture; only shown when there's no custom
    background image (hidden automatically via JS otherwise) */
@@ -520,7 +540,7 @@ body.regdesk-body {
 }
 
 .header-upcoming-label {
-  font-size: 7vh;
+  font-size: 2.6vh;
   font-weight: 800;
   letter-spacing: 1.5px;
   color: var(--text-gold);

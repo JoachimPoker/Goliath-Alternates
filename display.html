@@ -13,10 +13,7 @@
 
   <div class="split-screen">
     <div class="col-map">
-      <div class="map-frame">
-        <img id="mapCarouselA" class="map-img" alt="">
-        <img id="mapCarouselB" class="map-img" alt="">
-      </div>
+      <div class="map-frame" id="mapFrame"></div>
       <div class="qr-section">
         <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://YOUR-SITE.web.app" class="qr-img">
         <p style="margin: 0.5vh 0 0 0; font-size: 1.5vh;">SCAN FOR ALERTS</p>
@@ -231,6 +228,13 @@
       }
     }
 
+    function nameWithGuarantee(t) {
+      return t.guarantee ? `${t.name} <span class="schedule-gtd-inline">// ${t.guarantee}</span>` : t.name;
+    }
+    function buyInLine(t) {
+      return t.buy_in ? `<div class="schedule-gtd">Buy-in: ${t.buy_in}</div>` : '';
+    }
+
     function renderSchedulePage() {
       const container = document.getElementById('tvList');
       const start = schedulePageIndex * SCHEDULE_PAGE_SIZE;
@@ -247,7 +251,8 @@
         }
         html += `
           <div class="schedule-item">
-            <div class="name">${t.name}</div>
+            <div class="name">${nameWithGuarantee(t)}</div>
+            ${buyInLine(t)}
             <div class="meta">${t.start_time || ''}${t.location ? ' // ' + t.location : ''}</div>
           </div>
         `;
@@ -296,8 +301,9 @@ async function loadTicker() {
     let mapImages = [];
     let mapIndex = 0;
     let mapTimer = null;
-    let mapActiveIsA = true;
+    let mapCurrentEl = null;
     let mapImagesSnapshot = null;
+    const MAP_TRANSITION_MS = 1000;
 
     async function loadMapCarousel() {
       const { data } = await _supabase.from('display_carousel_images').select('*').eq('is_active', true).order('sort_order');
@@ -310,23 +316,47 @@ async function loadTicker() {
       mapIndex = 0;
       if (mapTimer) clearTimeout(mapTimer);
 
-      const imgA = document.getElementById('mapCarouselA');
-      const imgB = document.getElementById('mapCarouselB');
+      const mapFrame = document.getElementById('mapFrame');
+      mapFrame.querySelectorAll('.map-img').forEach(el => el.remove());
+      mapCurrentEl = null;
 
-      if (mapImages.length === 0) {
-        imgA.classList.remove('active');
-        imgB.classList.remove('active');
-        imgA.removeAttribute('src');
-        imgB.removeAttribute('src');
-        return;
-      }
+      if (mapImages.length === 0) return;
 
-      imgA.src = mapImages[0].image_url;
-      imgA.classList.add('active');
-      imgB.classList.remove('active');
-      mapActiveIsA = true;
-
+      showMapSlide(mapImages[0]);
       if (mapImages.length > 1) scheduleNextMapSlide();
+    }
+
+    function createMapSlideElement(item) {
+      let el;
+      if (item.media_type === 'video') {
+        el = document.createElement('video');
+        el.autoplay = true;
+        el.muted = true;
+        el.loop = true;
+        el.playsInline = true;
+      } else {
+        el = document.createElement('img');
+        el.alt = '';
+      }
+      el.src = item.image_url;
+      el.className = 'map-img';
+      return el;
+    }
+
+    function showMapSlide(item) {
+      const mapFrame = document.getElementById('mapFrame');
+      const newEl = createMapSlideElement(item);
+      mapFrame.appendChild(newEl);
+
+      requestAnimationFrame(() => {
+        newEl.classList.add('active');
+        if (mapCurrentEl) {
+          const oldEl = mapCurrentEl;
+          oldEl.classList.remove('active');
+          setTimeout(() => oldEl.remove(), MAP_TRANSITION_MS);
+        }
+        mapCurrentEl = newEl;
+      });
     }
 
     function scheduleNextMapSlide() {
@@ -335,15 +365,7 @@ async function loadTicker() {
 
       mapTimer = setTimeout(() => {
         mapIndex = (mapIndex + 1) % mapImages.length;
-        const next = mapImages[mapIndex];
-        const showEl = document.getElementById(mapActiveIsA ? 'mapCarouselB' : 'mapCarouselA');
-        const hideEl = document.getElementById(mapActiveIsA ? 'mapCarouselA' : 'mapCarouselB');
-
-        showEl.src = next.image_url;
-        showEl.classList.add('active');
-        hideEl.classList.remove('active');
-        mapActiveIsA = !mapActiveIsA;
-
+        showMapSlide(mapImages[mapIndex]);
         scheduleNextMapSlide();
       }, seconds * 1000);
     }

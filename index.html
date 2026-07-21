@@ -115,6 +115,17 @@
       await renderTodayRemaining(todayEl);
     }
 
+    // Guarantee appends inline onto the name line; buy-in gets its own
+    // line right below; time/location comes last. Renders nothing extra
+    // if a field isn't set (true for all existing/imported events until
+    // filled in via admin).
+    function nameWithGuarantee(t) {
+      return t.guarantee ? `${t.name} <span class="schedule-gtd-inline">// ${t.guarantee}</span>` : t.name;
+    }
+    function buyInLine(t) {
+      return t.buy_in ? `<div class="schedule-gtd">Buy-in: ${t.buy_in}</div>` : '';
+    }
+
     // --- 2a. LATER TODAY (shown alongside the active list, so you can
     // see what's next without losing sight of what's live). Below it,
     // a "Show Full Schedule" toggle always appears - collapsed by
@@ -135,7 +146,8 @@
           <div class="schedule-date-header">Later Today</div>
           ${todayRows.map(t => `
             <div class="schedule-item">
-              <div class="name">${t.name}</div>
+              <div class="name">${nameWithGuarantee(t)}</div>
+              ${buyInLine(t)}
               <div class="meta">${t.start_time || ''}${t.location ? ' // ' + t.location : ''}</div>
             </div>
           `).join('')}
@@ -184,7 +196,8 @@
         <div class="schedule-date-header">${dateFmt(date)}</div>
         ${groups[date].map(t => `
           <div class="schedule-item">
-            <div class="name">${t.name}</div>
+            <div class="name">${nameWithGuarantee(t)}</div>
+            ${buyInLine(t)}
             <div class="meta">${t.start_time || ''}${t.location ? ' // ' + t.location : ''}</div>
           </div>
         `).join('')}
@@ -221,7 +234,8 @@
         <div class="schedule-date-header">${dateFmt(date)}</div>
         ${groups[date].map(t => `
           <div class="schedule-item">
-            <div class="name">${t.name}</div>
+            <div class="name">${nameWithGuarantee(t)}</div>
+            ${buyInLine(t)}
             <div class="meta">${t.start_time || ''}${t.location ? ' // ' + t.location : ''}</div>
           </div>
         `).join('')}
@@ -280,8 +294,10 @@
 
       box.style.display = 'block';
       box.innerHTML = list.map((b, i) => {
-        const img = `<img src="${b.image_url}" alt="">`;
-        const inner = b.link_url ? `<a href="${b.link_url}" target="_blank" rel="noopener noreferrer">${img}</a>` : img;
+        const media = b.media_type === 'video'
+          ? `<video src="${b.image_url}" autoplay muted loop playsinline></video>`
+          : `<img src="${b.image_url}" alt="">`;
+        const inner = b.link_url ? `<a href="${b.link_url}" target="_blank" rel="noopener noreferrer">${media}</a>` : media;
         return `<div class="banner-slide ${i === 0 ? 'active' : ''}">${inner}</div>`;
       }).join('')
         + (list.length > 1 ? `<div class="banner-dots">${list.map((_, i) => `<span class="banner-dot ${i === 0 ? 'active' : ''}"></span>`).join('')}</div>` : '');
@@ -495,6 +511,19 @@
         }
       }
     });
+
+    // --- SIMPLE VISIT TRACKING ---
+    // Logs one row per browser session (not per page load/refresh),
+    // so admin can see rough visit counts without needing a third-party
+    // analytics account. Fails silently - a tracking hiccup should
+    // never affect the actual page.
+    function logPageView() {
+      const sessionKey = 'goliath_view_logged';
+      if (sessionStorage.getItem(sessionKey)) return;
+      sessionStorage.setItem(sessionKey, '1');
+      _supabase.from('page_views').insert([{ page: 'home' }]).then(() => {}).catch(() => {});
+    }
+    logPageView();
 
     window.addEventListener('DOMContentLoaded', initMaps);
 
