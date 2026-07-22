@@ -459,7 +459,7 @@ body.regdesk-body {
   align-items: center;
   gap: 4.5vh;
   height: 38vh;
-  padding: 0 3.5vh;
+  padding: 0 8vh;
   flex-shrink: 0;
 }
 
@@ -540,7 +540,7 @@ body.regdesk-body {
 }
 
 .header-upcoming-label {
-  font-size: 2.6vh;
+  font-size: 6vh;
   font-weight: 800;
   letter-spacing: 1.5px;
   color: var(--text-gold);
@@ -615,7 +615,7 @@ body.regdesk-body {
 .station-badge.closed { color: #9a96b8; }
 
 .station-serving {
-  font-size: 4.2vh;
+  font-size: 6vh;
   font-weight: 700;
   color: #28a745;
   margin-top: 0.8vh;
