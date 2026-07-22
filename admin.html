@@ -175,6 +175,9 @@
             </div>
             <ul id="msgList" class="list-group list-group-flush small"></ul>
           </div>
+
+          <h4 class="mb-3 mt-4">🎛️ Stations</h4>
+          <div id="stationsWrap"></div>
         </div>
       </div>
 
@@ -205,9 +208,6 @@
             </div>
             <div id="regdeskIdleWrap"></div>
           </div>
-
-          <h6 class="mb-2 mt-4">Stations</h6>
-          <div id="stationsWrap"></div>
         </div>
 
         <div class="col-lg-5">
@@ -428,7 +428,7 @@
 
     // --- UPCOMING EVENTS LIST: paginated and date-filtered, so a big
     // imported schedule doesn't turn this into one giant page. ---
-    const UPCOMING_PAGE_SIZE = 10;
+    const UPCOMING_PAGE_SIZE = 5;
     let upcomingPageIndex = 0;
     let upcomingShowPast = false;
     window._upcomingCache = [];

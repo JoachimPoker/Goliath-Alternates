@@ -399,15 +399,11 @@
 
       const headerText = document.getElementById('headerLogoText');
       const headerImg = document.getElementById('headerLogoImg');
-      const idleText = document.getElementById('idleBadgeText');
-      const idleImg = document.getElementById('idleBadgeImg');
 
       if (url) {
         headerImg.src = url; headerImg.style.display = ''; headerText.style.display = 'none';
-        idleImg.src = url; idleImg.style.display = ''; idleText.style.display = 'none';
       } else {
         headerImg.style.display = 'none'; headerText.style.display = '';
-        idleImg.style.display = 'none'; idleText.style.display = '';
       }
     }
 
