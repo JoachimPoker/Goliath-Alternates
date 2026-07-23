@@ -387,17 +387,33 @@ body {
 .banner-dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.4); }
 .banner-dot.active { background: var(--text-gold); }
 
-/* === REG DESK VIDEO WALL (1920x384 landscape strip) === */
+/* === REG DESK VIDEO WALL ===
+   The physical wall is 1920x800, but only the top 1920x384 actually
+   shows reliably - the wall cuts off roughly the bottom half. So the
+   real canvas is 1920x800 (body), all the actual info lives in a
+   1920x384 box pinned to the top (.regdesk-content-area), and
+   everything below that is just a blank fill color. Every size inside
+   that box uses container query units (cqh/cqw) rather than vh/vw, so
+   it scales against the 384-tall box itself rather than the true
+   800-tall viewport - the exact same design, just correctly scoped. */
 body.regdesk-body {
   margin: 0; padding: 0;
   width: 100vw; height: 100vh;
   overflow: hidden;
-  background: #15113a;
+  background: #15113a; /* blank fill for the area below the content box */
+}
+
+.regdesk-content-area {
+  position: relative;
+  width: 100vw;
+  height: 48vh; /* 384/800 = 48% of the real 1920x800 canvas */
+  overflow: hidden;
+  container-type: size;
 }
 
 .regdesk-wrap {
   position: relative;
-  width: 100vw; height: 100vh;
+  width: 100cqw; height: 100cqh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -441,9 +457,9 @@ body.regdesk-body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24vh;
+  font-size: 24cqh;
   font-weight: 900;
-  letter-spacing: 1.2vh;
+  letter-spacing: 1.2cqh;
   color: rgba(255,255,255,0.03);
   transform: rotate(-6deg);
   white-space: nowrap;
@@ -457,9 +473,9 @@ body.regdesk-body {
   z-index: 3;
   display: flex;
   align-items: center;
-  gap: 4.5vh;
-  height: 38vh;
-  padding: 0 8vh;
+  gap: 4.5cqh;
+  height: 38cqh;
+  padding: 0 8cqh;
   flex-shrink: 0;
 }
 
@@ -468,18 +484,18 @@ body.regdesk-body {
   color: #17123a;
   font-weight: 900;
   letter-spacing: 2px;
-  font-size: 5.6vh;
-  padding: 1.1vh 2.4vh;
-  border-radius: 0.7vh;
+  font-size: 5.6cqh;
+  padding: 1.1cqh 2.4cqh;
+  border-radius: 0.7cqh;
   box-shadow: 0 0 20px rgba(238,191,54,0.3);
   flex-shrink: 0;
   white-space: nowrap;
 }
 
 .regdesk-logo-img {
-  height: 22vh;
+  height: 22cqh;
   width: auto;
-  max-width: 30vw;
+  max-width: 30cqw;
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -488,12 +504,12 @@ body.regdesk-body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 0.8vh;
+  gap: 0.8cqh;
   min-width: 0;
 }
 
 .header-flight {
-  font-size: 8vh;
+  font-size: 8cqh;
   font-weight: 900;
   color: #fff;
   text-transform: uppercase;
@@ -501,11 +517,11 @@ body.regdesk-body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 60vw;
+  max-width: 60cqw;
 }
 
 .header-status {
-  font-size: 8vh;
+  font-size: 8cqh;
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -519,11 +535,11 @@ body.regdesk-body {
 
 .header-dots {
   display: flex;
-  gap: 0.9vh;
-  margin-top: 0.4vh;
+  gap: 0.9cqh;
+  margin-top: 0.4cqh;
 }
 .header-dot {
-  width: 1.2vh; height: 1.2vh;
+  width: 1.2cqh; height: 1.2cqh;
   border-radius: 50%;
   background: rgba(255,255,255,0.22);
 }
@@ -535,12 +551,12 @@ body.regdesk-body {
 .header-upcoming {
   flex-direction: column;
   justify-content: center;
-  gap: 0.8vh;
+  gap: 0.8cqh;
   min-width: 0;
 }
 
 .header-upcoming-label {
-  font-size: 6vh;
+  font-size: 6cqh;
   font-weight: 800;
   letter-spacing: 1.5px;
   color: var(--text-gold);
@@ -550,23 +566,23 @@ body.regdesk-body {
 .header-upcoming-list {
   display: flex;
   flex-direction: column;
-  gap: 0.6vh;
+  gap: 0.6cqh;
 }
 
 .header-upcoming-item {
-  font-size: 8vh;
+  font-size: 8cqh;
   font-weight: 800;
   color: #fff;
   text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 68vw;
+  max-width: 68cqw;
 }
 
 .header-upcoming-item .time {
   color: var(--text-gold);
-  margin-left: 1.2vh;
+  margin-left: 1.2cqh;
 }
 
 /* --- Stations row: reserves width for 5 slots, but only the first 4 get
@@ -577,14 +593,14 @@ body.regdesk-body {
   z-index: 3;
   display: flex;
   flex: 0 0 auto;
-  height: 44vh;
-  margin: 0 3.5vh 1.5vh;
+  height: 44cqh;
+  margin: 0 3.5cqh 1.5cqh;
 }
 
 .regdesk-stations {
   flex: 4;
   display: flex;
-  border-radius: 1.4vh;
+  border-radius: 1.4cqh;
   background: rgba(8,6,20,0.55);
   border: 1px solid rgba(255,255,255,0.1);
   overflow: hidden;
@@ -605,7 +621,7 @@ body.regdesk-body {
 .station-card:last-child { border-right: none; }
 
 .station-badge {
-  font-size: 11vh;
+  font-size: 11cqh;
   font-weight: 900;
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -615,14 +631,14 @@ body.regdesk-body {
 .station-badge.closed { color: #9a96b8; }
 
 .station-serving {
-  font-size: 6vh;
+  font-size: 6cqh;
   font-weight: 700;
   color: #28a745;
-  margin-top: 0.8vh;
+  margin-top: 0.8cqh;
   text-transform: uppercase;
   text-align: center;
   line-height: 1.15;
-  min-height: 3.6vh;
+  min-height: 3.6cqh;
 }
 .station-serving.closed { color: #8781a0; }
 
@@ -634,8 +650,8 @@ body.regdesk-body {
   z-index: 3;
   flex: 1;
   min-height: 0;
-  margin: 0 3.5vh 2.5vh;
-  border-radius: 1.2vh;
+  margin: 0 3.5cqh 2.5cqh;
+  border-radius: 1.2cqh;
   background: rgba(8,6,20,0.4);
   border: 1px solid rgba(255,255,255,0.08);
   display: flex;
@@ -646,14 +662,14 @@ body.regdesk-body {
 .regdesk-ticker .ticker-item {
   color: #fff;
   font-weight: 800;
-  font-size: 5vh;
-  padding-right: 8vw;
+  font-size: 5cqh;
+  padding-right: 8cqw;
 }
 
 .regdesk-idle {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  width: 100vw; height: 100vh;
+  width: 100cqw; height: 100cqh;
   background: radial-gradient(circle at 12% 15%, #201955 0%, #100c2e 55%, #08061a 100%);
   overflow: hidden;
 }
@@ -669,25 +685,25 @@ body.regdesk-body {
 
 .regdesk-idle-badge {
   position: absolute;
-  bottom: 2vh; right: 2.5vh;
+  bottom: 2cqh; right: 2.5cqh;
   z-index: 5;
   background: linear-gradient(135deg, #fff3c4, var(--text-gold));
   color: #17123a;
   font-weight: 900;
   letter-spacing: 2px;
-  font-size: 2.4vh;
-  padding: 0.6vh 1.6vh;
-  border-radius: 0.6vh;
+  font-size: 2.4cqh;
+  padding: 0.6cqh 1.6cqh;
+  border-radius: 0.6cqh;
   box-shadow: 0 0 20px rgba(238,191,54,0.35);
 }
 
 .regdesk-idle-badge-img {
   position: absolute;
-  bottom: 2vh; right: 2.5vh;
+  bottom: 2cqh; right: 2.5cqh;
   z-index: 5;
-  height: 9vh;
+  height: 9cqh;
   width: auto;
-  max-width: 30vw;
+  max-width: 30cqw;
   object-fit: contain;
 }
 

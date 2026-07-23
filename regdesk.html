@@ -7,43 +7,47 @@
 </head>
 <body class="regdesk-body">
 
-  <!-- IDLE SCREEN: shown when all stations are closed. Rotates through
-       the images/videos set in admin, each with its own duration.
-       Slide elements (img or video, depending on type) are created and
-       removed dynamically here so mixed media types can crossfade. -->
-  <div class="regdesk-idle" id="idleScreen" style="display:none;">
-  </div>
+  <div class="regdesk-content-area">
 
-  <!-- MAIN SCREEN: shown whenever at least one station is open -->
-  <div class="regdesk-wrap" id="mainScreen">
-    <div class="regdesk-bg-default"></div>
-    <div class="regdesk-bg-slides" id="bgSlides"></div>
-    <div class="regdesk-watermark" id="watermark">GOLIATH</div>
+    <!-- IDLE SCREEN: shown when all stations are closed. Rotates through
+         the images/videos set in admin, each with its own duration.
+         Slide elements (img or video, depending on type) are created and
+         removed dynamically here so mixed media types can crossfade. -->
+    <div class="regdesk-idle" id="idleScreen" style="display:none;">
+    </div>
 
-    <div class="regdesk-header">
-      <div class="regdesk-logo" id="headerLogoText">GOLIATH</div>
-      <img class="regdesk-logo-img" id="headerLogoImg" alt="" style="display:none;">
+    <!-- MAIN SCREEN: shown whenever at least one station is open -->
+    <div class="regdesk-wrap" id="mainScreen">
+      <div class="regdesk-bg-default"></div>
+      <div class="regdesk-bg-slides" id="bgSlides"></div>
+      <div class="regdesk-watermark" id="watermark">GOLIATH</div>
 
-      <div class="header-info">
-        <div class="header-flight" id="spotlightName"></div>
-        <div class="header-status" id="spotlightStatus"></div>
-        <div class="header-dots" id="spotlightDots"></div>
+      <div class="regdesk-header">
+        <div class="regdesk-logo" id="headerLogoText">GOLIATH</div>
+        <img class="regdesk-logo-img" id="headerLogoImg" alt="" style="display:none;">
+
+        <div class="header-info">
+          <div class="header-flight" id="spotlightName"></div>
+          <div class="header-status" id="spotlightStatus"></div>
+          <div class="header-dots" id="spotlightDots"></div>
+        </div>
+
+        <div class="header-upcoming" id="headerUpcoming" style="display:none;">
+          <div class="header-upcoming-label" id="headerUpcomingLabel">Upcoming Events Today</div>
+          <div class="header-upcoming-list" id="headerUpcomingList"></div>
+        </div>
       </div>
 
-      <div class="header-upcoming" id="headerUpcoming" style="display:none;">
-        <div class="header-upcoming-label" id="headerUpcomingLabel">Upcoming Events Today</div>
-        <div class="header-upcoming-list" id="headerUpcomingList"></div>
+      <div class="regdesk-stations-row">
+        <div class="regdesk-stations" id="stationsRow"></div>
+        <div class="regdesk-empty-slot"></div>
+      </div>
+
+      <div class="regdesk-ticker">
+        <div class="ticker-content" id="regdeskTicker"></div>
       </div>
     </div>
 
-    <div class="regdesk-stations-row">
-      <div class="regdesk-stations" id="stationsRow"></div>
-      <div class="regdesk-empty-slot"></div>
-    </div>
-
-    <div class="regdesk-ticker">
-      <div class="ticker-content" id="regdeskTicker"></div>
-    </div>
   </div>
 
   <button class="regdesk-fullscreen-btn" id="fsBtn" onclick="toggleFullscreen()">⛶ fullscreen</button>
@@ -234,7 +238,7 @@
     let liveTimer = null;
     let liveCurrentEl = null;
     let liveImagesSnapshot = null;
-    const LIVE_TRANSITION_MS = 1200;
+    let liveElementCache = {}; // item id -> element, reused across turns
 
     async function loadLiveImages() {
       const { data } = await _supabase.from('regdesk_live_images').select('*').eq('is_active', true).order('sort_order');
@@ -247,9 +251,16 @@
       liveIndex = 0;
       if (liveTimer) clearTimeout(liveTimer);
 
-      const bgSlides = document.getElementById('bgSlides');
       const watermark = document.getElementById('watermark');
-      bgSlides.querySelectorAll('.regdesk-bg-image').forEach(el => el.remove());
+
+      // Drop cached elements for anything no longer in the active list.
+      const currentIds = new Set(liveImages.map(i => i.id));
+      Object.keys(liveElementCache).forEach(id => {
+        if (!currentIds.has(id)) {
+          liveElementCache[id].remove();
+          delete liveElementCache[id];
+        }
+      });
       liveCurrentEl = null;
 
       if (liveImages.length === 0) {
@@ -262,7 +273,9 @@
       if (liveImages.length > 1) scheduleNextLiveSlide();
     }
 
-    function createLiveSlideElement(item) {
+    function getOrCreateLiveSlideElement(item) {
+      if (liveElementCache[item.id]) return liveElementCache[item.id];
+
       let el;
       if (item.media_type === 'video') {
         el = document.createElement('video');
@@ -276,20 +289,18 @@
       }
       el.src = item.image_url;
       el.className = 'regdesk-bg-image';
+      document.getElementById('bgSlides').appendChild(el);
+      liveElementCache[item.id] = el;
       return el;
     }
 
     function showLiveSlide(item) {
-      const bgSlides = document.getElementById('bgSlides');
-      const newEl = createLiveSlideElement(item);
-      bgSlides.appendChild(newEl);
+      const newEl = getOrCreateLiveSlideElement(item);
 
       requestAnimationFrame(() => {
         newEl.classList.add('active');
-        if (liveCurrentEl) {
-          const oldEl = liveCurrentEl;
-          oldEl.classList.remove('active');
-          setTimeout(() => oldEl.remove(), LIVE_TRANSITION_MS);
+        if (liveCurrentEl && liveCurrentEl !== newEl) {
+          liveCurrentEl.classList.remove('active');
         }
         liveCurrentEl = newEl;
       });
@@ -309,17 +320,18 @@
     // --- IDLE ROTATION: shown full-bleed when all stations are closed.
     // Cycles through every active image/video in regdesk_idle_images,
     // each for its own configured duration. A single item just shows
-    // statically with no cycling. Slide elements are created and removed
-    // dynamically (rather than two fixed <img> tags) so a mix of images,
-    // GIFs, and videos can all crossfade the same way - GIFs just work
-    // as a normal <img>, videos get an actual <video> tag with
-    // autoplay/muted/loop so they play automatically like a background. ---
+    // statically with no cycling. Slide elements (img or video,
+    // depending on type) are created once per item and kept alive in a
+    // hidden state between turns, rather than removed and rebuilt every
+    // cycle - a video already loaded is never re-fetched just because
+    // its turn comes around again; only genuinely new/removed items
+    // create or clean up an element. ---
     let idleImages = [];
     let idleIndex = 0;
     let idleTimer = null;
     let idleCurrentEl = null;
     let idleImagesSnapshot = null;
-    const IDLE_TRANSITION_MS = 1200;
+    let idleElementCache = {}; // item id -> element, reused across turns
 
     async function loadIdleImages() {
       const { data } = await _supabase.from('regdesk_idle_images').select('*').eq('is_active', true).order('sort_order');
@@ -332,8 +344,15 @@
       idleIndex = 0;
       if (idleTimer) clearTimeout(idleTimer);
 
-      const idleScreen = document.getElementById('idleScreen');
-      idleScreen.querySelectorAll('.idle-slide-media').forEach(el => el.remove());
+      // Drop cached elements for anything no longer in the active list,
+      // so deleted/deactivated items actually get cleaned up.
+      const currentIds = new Set(idleImages.map(i => i.id));
+      Object.keys(idleElementCache).forEach(id => {
+        if (!currentIds.has(id)) {
+          idleElementCache[id].remove();
+          delete idleElementCache[id];
+        }
+      });
       idleCurrentEl = null;
 
       if (idleImages.length === 0) return;
@@ -342,7 +361,9 @@
       if (idleImages.length > 1) scheduleNextIdleSlide();
     }
 
-    function createIdleSlideElement(item) {
+    function getOrCreateIdleSlideElement(item) {
+      if (idleElementCache[item.id]) return idleElementCache[item.id];
+
       let el;
       if (item.media_type === 'video') {
         el = document.createElement('video');
@@ -356,20 +377,18 @@
       }
       el.src = item.image_url;
       el.className = 'idle-slide idle-slide-media';
+      document.getElementById('idleScreen').appendChild(el);
+      idleElementCache[item.id] = el;
       return el;
     }
 
     function showIdleSlide(item) {
-      const idleScreen = document.getElementById('idleScreen');
-      const newEl = createIdleSlideElement(item);
-      idleScreen.insertBefore(newEl, idleScreen.firstChild);
+      const newEl = getOrCreateIdleSlideElement(item);
 
       requestAnimationFrame(() => {
         newEl.classList.add('active');
-        if (idleCurrentEl) {
-          const oldEl = idleCurrentEl;
-          oldEl.classList.remove('active');
-          setTimeout(() => oldEl.remove(), IDLE_TRANSITION_MS);
+        if (idleCurrentEl && idleCurrentEl !== newEl) {
+          idleCurrentEl.classList.remove('active');
         }
         idleCurrentEl = newEl;
       });
