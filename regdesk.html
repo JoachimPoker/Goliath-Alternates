@@ -133,8 +133,8 @@
       let statusText = '', cls = '';
       if (t.status_mode === 'OPEN') { statusText = 'Open Seating'; cls = 'success'; }
       else if (t.status_mode === 'ALL') { statusText = 'All Alternates'; cls = 'danger'; }
-      else if (t.status_mode === 'BREAK') { statusText = `Up To #${t.current_alt_number}`; cls = 'info'; }
-      else { statusText = `Up To #${t.current_alt_number}`; cls = 'gold'; }
+      else if (t.status_mode === 'BREAK') { statusText = `After The Break Alternates Up To #${t.current_alt_number}`; cls = 'info'; }
+      else { statusText = `Alternates Up To #${t.current_alt_number}`; cls = 'gold'; }
 
       nameEl.textContent = t.name;
       statusEl.textContent = statusText;
