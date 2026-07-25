@@ -70,7 +70,11 @@
 
     // --- 2. LOAD HOME ---
     async function loadHome() {
-      const { data } = await _supabase.from('tournaments').select('*').eq('is_active', true).order('created_at');
+      const [{ data }, { data: settings }] = await Promise.all([
+        _supabase.from('tournaments').select('*').eq('is_active', true).order('created_at'),
+        _supabase.from('site_settings').select('alerts_enabled').eq('id', 1).maybeSingle()
+      ]);
+      const alertsEnabled = !settings || settings.alerts_enabled !== false;
       const list = document.getElementById('tournamentList');
       const todayEl = document.getElementById('todaySchedule');
 
@@ -109,10 +113,114 @@
           <div class="border-top border-secondary pt-3 mt-2 text-center">
             <div class="display-5 fw-bold ${mainColor}" style="line-height:1.1">${mainText}</div>
           </div>
+          ${alertsEnabled ? renderAlertBlock(t) : ''}
         </div>
       `}).join('');
 
       await renderTodayRemaining(todayEl);
+    }
+
+    // --- ALERT ME (push notifications) ---
+    function renderAlertBlock(t) {
+      return `
+        <div class="mt-3 text-center" id="alertBlock-${t.id}">
+          <button class="btn btn-outline-warning btn-sm" onclick="showAlertForm('${t.id}')" id="alertBtn-${t.id}">🔔 Alert Me</button>
+          <div id="alertForm-${t.id}" style="display:none;">
+            <div class="input-group input-group-sm justify-content-center mt-2" style="max-width:220px;margin:0 auto;">
+              <input type="number" class="form-control" placeholder="Your alt #" id="alertNum-${t.id}">
+              <button class="btn btn-warning" onclick="setAlert('${t.id}')">Set</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    window.showAlertForm = (id) => {
+      document.getElementById(`alertBtn-${id}`).style.display = 'none';
+      document.getElementById(`alertForm-${id}`).style.display = 'block';
+      document.getElementById(`alertNum-${id}`).focus();
+    };
+
+    async function requestNotificationPermission() {
+      if (!('Notification' in window)) return false;
+      if (Notification.permission === 'granted') return true;
+      if (Notification.permission === 'denied') return false;
+      const perm = await Notification.requestPermission();
+      return perm === 'granted';
+    }
+
+    const VAPID_PUBLIC_KEY = 'BMxNqQvLECwicRo9Wb9-dPTMxG6rtuzL294BcpspmMIln0BLjk2-2qrc-KTw6AGYkKqHQWNemfxTuP9rB2UhKy4';
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+      return outputArray;
+    }
+
+    async function subscribeToPush() {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+      }
+      return subscription;
+    }
+
+    window.setAlert = async (tournamentId) => {
+      const input = document.getElementById(`alertNum-${tournamentId}`);
+      const num = parseInt(input.value);
+      if (isNaN(num) || num <= 0) { alert('Enter a valid alt number first'); return; }
+
+      const formEl = document.getElementById(`alertForm-${tournamentId}`);
+      const originalHtml = formEl.innerHTML;
+      formEl.innerHTML = '<div class="text-muted small">Setting up...</div>';
+
+      try {
+        const granted = await requestNotificationPermission();
+        if (!granted) {
+          formEl.innerHTML = '<div class="text-danger small">Notifications are blocked - enable them in your browser settings to use Alert Me.</div>';
+          return;
+        }
+
+        const subscription = await subscribeToPush();
+        if (!subscription) {
+          formEl.innerHTML = '<div class="text-danger small">This browser/device doesn\'t support alerts.</div>';
+          return;
+        }
+
+        const subJson = subscription.toJSON();
+        const { error } = await _supabase.from('push_subscriptions').upsert([{
+          tournament_id: tournamentId,
+          target_alt_number: num,
+          endpoint: subJson.endpoint,
+          p256dh: subJson.keys.p256dh,
+          auth: subJson.keys.auth,
+          notified: false
+        }], { onConflict: 'endpoint,tournament_id' });
+
+        if (error) {
+          formEl.innerHTML = originalHtml;
+          alert('Could not set the alert - please try again.');
+          return;
+        }
+
+        formEl.innerHTML = `<div class="text-success small fw-bold">✓ We'll alert you when it's close to #${num}</div>`;
+      } catch (e) {
+        console.error(e);
+        formEl.innerHTML = originalHtml;
+        alert('Something went wrong setting up the alert.');
+      }
+    };
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
 
     // Guarantee appends inline onto the name line; buy-in gets its own
@@ -279,10 +387,15 @@
 
     // --- 2c. AD BANNER CAROUSEL ---
     let bannerRotateTimer = null;
+    let bannerSnapshot = null;
     async function loadBannerCarousel() {
       const { data } = await _supabase.from('banners').select('*').eq('is_active', true).order('sort_order');
-      const box = document.getElementById('bannerCarousel');
       const list = data || [];
+      const snapshot = JSON.stringify(list);
+      if (snapshot === bannerSnapshot) return; // nothing changed - don't rebuild (and re-fetch any videos) for no reason
+      bannerSnapshot = snapshot;
+
+      const box = document.getElementById('bannerCarousel');
 
       if (bannerRotateTimer) clearInterval(bannerRotateTimer);
 
@@ -517,11 +630,29 @@
     // so admin can see rough visit counts without needing a third-party
     // analytics account. Fails silently - a tracking hiccup should
     // never affect the actual page.
+    function classifyReferrer() {
+      if (!document.referrer) return 'Direct';
+      try {
+        const host = new URL(document.referrer).hostname.replace(/^www\./, '');
+        return host || 'Direct';
+      } catch (e) {
+        return 'Direct';
+      }
+    }
+
+    function classifyDevice() {
+      return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'Mobile' : 'Desktop';
+    }
+
     function logPageView() {
       const sessionKey = 'goliath_view_logged';
       if (sessionStorage.getItem(sessionKey)) return;
       sessionStorage.setItem(sessionKey, '1');
-      _supabase.from('page_views').insert([{ page: 'home' }]).then(() => {}).catch(() => {});
+      _supabase.from('page_views').insert([{
+        page: 'home',
+        referrer: classifyReferrer(),
+        device_type: classifyDevice()
+      }]).then(() => {}).catch(() => {});
     }
     logPageView();
 

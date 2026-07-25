@@ -101,7 +101,7 @@
           <h6 class="mb-0">📈 Website Traffic</h6>
           <span class="text-muted small">Website only, once per visit</span>
         </div>
-        <div class="d-flex gap-4 flex-wrap">
+        <div class="d-flex gap-4 flex-wrap mb-2">
           <div>
             <div class="fs-4 fw-bold" id="statsToday">-</div>
             <div class="text-muted small">Today</div>
@@ -111,7 +111,33 @@
             <div class="text-muted small">All-time</div>
           </div>
         </div>
-        <div id="statsBreakdown" class="mt-2 small"></div>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <h6 class="small text-muted mb-1">Last 7 days</h6>
+            <div id="statsBreakdown" class="small"></div>
+          </div>
+          <div class="col-md-4">
+            <h6 class="small text-muted mb-1">Top referrers</h6>
+            <div id="statsReferrers" class="small"></div>
+          </div>
+          <div class="col-md-4">
+            <h6 class="small text-muted mb-1">Device</h6>
+            <div id="statsDevices" class="small"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ALERT ME -->
+      <div class="card p-3 mb-4 shadow-sm">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div>
+            <h6 class="mb-1">🔔 Alert Me Notifications</h6>
+            <p class="text-muted small mb-0">Lets players tap "Alert Me" on an active event and get a push notification on their phone when it's close to their number - works even with the site closed. Turning this off hides the button on the website <strong>and</strong> stops any notifications from being sent, immediately.</p>
+          </div>
+          <div class="form-check form-switch flex-shrink-0">
+            <input class="form-check-input" type="checkbox" role="switch" id="alertsEnabledToggle" style="width:3em;height:1.5em;" onchange="toggleAlertsEnabled(this.checked)">
+          </div>
+        </div>
       </div>
 
       <!-- LIVE EVENTS -->
@@ -352,6 +378,7 @@
       refreshSiteLogo();
       refreshDisplayCarousel();
       loadStats();
+      loadAlertsToggle();
 
       const liveDiv = document.getElementById('liveList');
       liveDiv.innerHTML = '';
@@ -428,7 +455,7 @@
 
     // --- UPCOMING EVENTS LIST: paginated and date-filtered, so a big
     // imported schedule doesn't turn this into one giant page. ---
-    const UPCOMING_PAGE_SIZE = 5;
+    const UPCOMING_PAGE_SIZE = 10;
     let upcomingPageIndex = 0;
     let upcomingShowPast = false;
     window._upcomingCache = [];
@@ -506,7 +533,7 @@
     // a SQL count/group-by via an RPC would be the next step instead of
     // pulling every row.
     async function loadStats() {
-      const { data } = await _supabase.from('page_views').select('created_at');
+      const { data } = await _supabase.from('page_views').select('created_at, referrer, device_type');
       const rows = data || [];
       const today = new Date().toISOString().split('T')[0];
 
@@ -523,8 +550,48 @@
         <div class="d-flex justify-content-between border-bottom py-1">
           <span class="text-muted">${d}</span><span class="fw-bold">${byDay[d]}</span>
         </div>
-      `).join('');
+      `).join('') || '<span class="text-muted">No visits yet.</span>';
+
+      // Referrers/device weren't tracked before this update, so older
+      // rows just show as blank - that's expected, not a bug.
+      const byReferrer = {};
+      rows.forEach(r => {
+        const ref = r.referrer || 'Unknown (older visit)';
+        byReferrer[ref] = (byReferrer[ref] || 0) + 1;
+      });
+      const topReferrers = Object.entries(byReferrer).sort((a, b) => b[1] - a[1]).slice(0, 7);
+      document.getElementById('statsReferrers').innerHTML = topReferrers.map(([ref, count]) => `
+        <div class="d-flex justify-content-between border-bottom py-1">
+          <span class="text-muted text-truncate" style="max-width:140px;" title="${ref}">${ref}</span><span class="fw-bold">${count}</span>
+        </div>
+      `).join('') || '<span class="text-muted">No visits yet.</span>';
+
+      const byDevice = {};
+      rows.forEach(r => {
+        const dev = r.device_type || 'Unknown (older visit)';
+        byDevice[dev] = (byDevice[dev] || 0) + 1;
+      });
+      document.getElementById('statsDevices').innerHTML = Object.entries(byDevice).sort((a, b) => b[1] - a[1]).map(([dev, count]) => `
+        <div class="d-flex justify-content-between border-bottom py-1">
+          <span class="text-muted">${dev}</span><span class="fw-bold">${count}</span>
+        </div>
+      `).join('') || '<span class="text-muted">No visits yet.</span>';
     }
+
+    // --- ALERT ME TOGGLE ---
+    async function loadAlertsToggle() {
+      const { data } = await _supabase.from('site_settings').select('alerts_enabled').eq('id', 1).maybeSingle();
+      const enabled = !data || data.alerts_enabled !== false;
+      document.getElementById('alertsEnabledToggle').checked = enabled;
+    }
+
+    window.toggleAlertsEnabled = async (checked) => {
+      const { error } = await _supabase.from('site_settings').upsert([{ id: 1, alerts_enabled: checked, updated_at: new Date().toISOString() }]);
+      if (error) {
+        alert('Could not save: ' + error.message);
+        document.getElementById('alertsEnabledToggle').checked = !checked;
+      }
+    };
 
     // --- ACTIONS ---
     window.openEdit = (id, name, time, loc, date, guarantee, buyIn) => {
