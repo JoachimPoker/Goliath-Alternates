@@ -95,62 +95,31 @@
 
     <div class="admin-main">
 
-      <!-- WEBSITE TRAFFIC -->
-      <div class="card p-3 mb-4 shadow-sm">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-          <h6 class="mb-0">📈 Website Traffic</h6>
-          <span class="text-muted small">Website only, once per visit</span>
+      <!-- LIVE EVENTS + STATIONS: what staff touch constantly during
+           the event - always visible, right at the top, no clicking
+           needed to get to it. -->
+      <div class="row g-4 mb-2">
+        <div class="col-lg-7">
+          <h4 class="mb-3 text-success">🟢 Live Events</h4>
+          <div id="liveList" class="row g-3"></div>
         </div>
-        <div class="d-flex gap-4 flex-wrap mb-2">
-          <div>
-            <div class="fs-4 fw-bold" id="statsToday">-</div>
-            <div class="text-muted small">Today</div>
-          </div>
-          <div>
-            <div class="fs-4 fw-bold" id="statsTotal">-</div>
-            <div class="text-muted small">All-time</div>
-          </div>
-        </div>
-        <div class="row g-3">
-          <div class="col-md-4">
-            <h6 class="small text-muted mb-1">Last 7 days</h6>
-            <div id="statsBreakdown" class="small"></div>
-          </div>
-          <div class="col-md-4">
-            <h6 class="small text-muted mb-1">Top referrers</h6>
-            <div id="statsReferrers" class="small"></div>
-          </div>
-          <div class="col-md-4">
-            <h6 class="small text-muted mb-1">Device</h6>
-            <div id="statsDevices" class="small"></div>
-          </div>
+        <div class="col-lg-5">
+          <h4 class="mb-3">🎛️ Stations</h4>
+          <div id="stationsWrap"></div>
         </div>
       </div>
-
-      <!-- ALERT ME -->
-      <div class="card p-3 mb-4 shadow-sm">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <div>
-            <h6 class="mb-1">🔔 Alert Me Notifications</h6>
-            <p class="text-muted small mb-0">Lets players tap "Alert Me" on an active event and get a push notification on their phone when it's close to their number - works even with the site closed. Turning this off hides the button on the website <strong>and</strong> stops any notifications from being sent, immediately.</p>
-          </div>
-          <div class="form-check form-switch flex-shrink-0">
-            <input class="form-check-input" type="checkbox" role="switch" id="alertsEnabledToggle" style="width:3em;height:1.5em;" onchange="toggleAlertsEnabled(this.checked)">
-          </div>
-        </div>
-      </div>
-
-      <!-- LIVE EVENTS -->
-      <h4 class="mb-3 text-success">🟢 Live Events</h4>
-      <div id="liveList" class="row g-3 mb-4"></div>
 
       <hr class="section-divider">
 
-      <!-- CALENDAR + MESSAGES -->
+      <!-- CALENDAR + MESSAGES: used a few times a day, still always
+           visible but the add-event form starts collapsed since
+           browsing/going-live is more common than adding new ones. -->
       <div class="row g-4">
         <div class="col-lg-7">
           <h4 class="mb-3">📅 Event Calendar</h4>
-          <div class="card p-3 mb-3 shadow-sm">
+
+          <button class="btn btn-outline-secondary btn-sm mb-3" onclick="toggleAddEventForm()" id="addEventToggleBtn">+ Add New Event</button>
+          <div class="card p-3 mb-3 shadow-sm" id="addEventForm" style="display:none;">
             <h6>Add to Schedule</h6>
             <div class="row g-2 mb-2">
               <div class="col-12 col-md-4"><input id="newDate" type="date" class="form-control"></div>
@@ -166,6 +135,7 @@
               <div class="col-12"><button onclick="addToSchedule()" class="btn btn-secondary w-100">Add to Calendar</button></div>
             </div>
           </div>
+
           <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
             <div class="form-check m-0">
               <input class="form-check-input" type="checkbox" id="showPastEvents" onchange="toggleShowPastEvents(this.checked)">
@@ -201,83 +171,134 @@
             </div>
             <ul id="msgList" class="list-group list-group-flush small"></ul>
           </div>
-
-          <h4 class="mb-3 mt-4">🎛️ Stations</h4>
-          <div id="stationsWrap"></div>
         </div>
       </div>
 
       <hr class="section-divider">
 
-      <!-- REG DESK + MEDIA -->
-      <div class="row g-4">
-        <div class="col-lg-7">
-          <h4 class="mb-3">📺 Reg Desk Video Wall</h4>
-          <p class="text-muted small mb-3">Toggle each station open/closed and set what it's serving. Updates the video wall instantly. When all 4 are closed, the wall switches to the idle slideshow.</p>
+      <!-- EVERYTHING ELSE: media, branding, backgrounds, analytics,
+           the alerts on/off switch - set up once, rarely touched once
+           the event's actually running. Collapsed by default so it
+           doesn't compete for attention with the stuff above, but
+           still just one click away, no separate page/tab to find. -->
+      <details id="advancedSection">
+        <summary class="h4 mb-3" style="cursor:pointer;">⚙️ Settings &amp; Media</summary>
+        <p class="text-muted small mb-4">Backgrounds, banners, logo, analytics, and the Alert Me on/off switch - things you set up once rather than touch during service.</p>
 
-          <div class="card p-3 mb-3 shadow-sm">
-            <h6 class="mb-2">Live Screen Background</h6>
-            <p class="text-muted small mb-2">Behind the header and stations while at least one station is open. Add as many as you like - each has its own display duration. With just one, it shows statically (no rotation). Design at 1920x384 for a clean full-bleed fit. Leave empty to use the default gradient.</p>
-            <div class="d-flex flex-wrap gap-2 mb-2">
-              <input type="file" id="regdeskLiveFile" class="form-control" accept="image/*,video/*" style="max-width:260px;">
-              <button onclick="uploadRegdeskLiveImage()" class="btn btn-primary">Upload</button>
-            </div>
-            <div id="regdeskLiveWrap"></div>
+        <!-- WEBSITE TRAFFIC -->
+        <div class="card p-3 mb-4 shadow-sm">
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+            <h6 class="mb-0">📈 Website Traffic</h6>
+            <span class="text-muted small">Website only, once per visit</span>
           </div>
-
-          <div class="card p-3 mb-3 shadow-sm">
-            <h6 class="mb-2">Idle Screen Images</h6>
-            <p class="text-muted small mb-2">Shown full-screen when all 4 stations are closed. Add as many as you like - each has its own display duration (images and GIFs) or plays through once per loop (video). With just one, it shows statically. Design at 1920x384 for a clean full-bleed fit.</p>
-            <div class="d-flex flex-wrap gap-2 mb-2">
-              <input type="file" id="regdeskIdleFile" class="form-control" accept="image/*,video/*" style="max-width:260px;">
-              <button onclick="uploadRegdeskIdleImage()" class="btn btn-primary">Upload</button>
+          <div class="d-flex gap-4 flex-wrap mb-2">
+            <div>
+              <div class="fs-4 fw-bold" id="statsToday">-</div>
+              <div class="text-muted small">Today</div>
             </div>
-            <div id="regdeskIdleWrap"></div>
+            <div>
+              <div class="fs-4 fw-bold" id="statsTotal">-</div>
+              <div class="text-muted small">All-time</div>
+            </div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <h6 class="small text-muted mb-1">Last 7 days</h6>
+              <div id="statsBreakdown" class="small"></div>
+            </div>
+            <div class="col-md-4">
+              <h6 class="small text-muted mb-1">Top referrers</h6>
+              <div id="statsReferrers" class="small"></div>
+            </div>
+            <div class="col-md-4">
+              <h6 class="small text-muted mb-1">Device</h6>
+              <div id="statsDevices" class="small"></div>
+            </div>
           </div>
         </div>
 
-        <div class="col-lg-5">
-          <h4 class="mb-3">🖼️ Media</h4>
+        <!-- ALERT ME -->
+        <div class="card p-3 mb-4 shadow-sm">
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+              <h6 class="mb-1">🔔 Alert Me Notifications</h6>
+              <p class="text-muted small mb-0">Lets players tap "Alert Me" on an active event and get a push notification on their phone when it's their number or past it - works even with the site closed. Turning this off hides the button on the website <strong>and</strong> stops any notifications from being sent, immediately.</p>
+            </div>
+            <div class="form-check form-switch flex-shrink-0">
+              <input class="form-check-input" type="checkbox" role="switch" id="alertsEnabledToggle" style="width:3em;height:1.5em;" onchange="toggleAlertsEnabled(this.checked)">
+            </div>
+          </div>
+        </div>
 
-          <div class="card p-3 mb-4 shadow-sm">
-            <div class="d-flex align-items-center gap-3 flex-wrap">
-              <div id="siteLogoPreviewWrap" style="min-width:90px;"></div>
-              <div class="flex-grow-1" style="min-width:220px;">
-                <h6 class="mb-1">Site Logo</h6>
-                <p class="text-muted small mb-2">Used on the website header and the reg desk video wall badge, in place of the "GOLIATH" text. Leave blank to keep the text version.</p>
-                <div class="d-flex flex-wrap gap-2">
-                  <input type="file" id="siteLogoFile" class="form-control" accept="image/*" style="max-width:220px;">
-                  <button onclick="uploadSiteLogo()" class="btn btn-primary">Upload</button>
-                  <button onclick="clearSiteLogo()" class="btn btn-outline-secondary">Remove</button>
+        <div class="row g-4">
+          <div class="col-lg-7">
+            <h4 class="mb-3">📺 Reg Desk Video Wall</h4>
+            <p class="text-muted small mb-3">Toggle each station open/closed and set what it's serving from the Stations panel up top. Updates the video wall instantly. When all 4 are closed, the wall switches to the idle slideshow.</p>
+
+            <div class="card p-3 mb-3 shadow-sm">
+              <h6 class="mb-2">Live Screen Background</h6>
+              <p class="text-muted small mb-2">Behind the header and stations while at least one station is open. Add as many as you like - each has its own display duration. With just one, it shows statically (no rotation). Design at 1920x384 for a clean full-bleed fit. Leave empty to use the default gradient.</p>
+              <div class="d-flex flex-wrap gap-2 mb-2">
+                <input type="file" id="regdeskLiveFile" class="form-control" accept="image/*,video/*" style="max-width:260px;">
+                <button onclick="uploadRegdeskLiveImage()" class="btn btn-primary">Upload</button>
+              </div>
+              <div id="regdeskLiveWrap"></div>
+            </div>
+
+            <div class="card p-3 mb-3 shadow-sm">
+              <h6 class="mb-2">Idle Screen Images</h6>
+              <p class="text-muted small mb-2">Shown full-screen when all 4 stations are closed. Add as many as you like - each has its own display duration (images and GIFs) or plays through once per loop (video). With just one, it shows statically. Design at 1920x384 for a clean full-bleed fit.</p>
+              <div class="d-flex flex-wrap gap-2 mb-2">
+                <input type="file" id="regdeskIdleFile" class="form-control" accept="image/*,video/*" style="max-width:260px;">
+                <button onclick="uploadRegdeskIdleImage()" class="btn btn-primary">Upload</button>
+              </div>
+              <div id="regdeskIdleWrap"></div>
+            </div>
+          </div>
+
+          <div class="col-lg-5">
+            <h4 class="mb-3">🖼️ Media</h4>
+
+            <div class="card p-3 mb-4 shadow-sm">
+              <div class="d-flex align-items-center gap-3 flex-wrap">
+                <div id="siteLogoPreviewWrap" style="min-width:90px;"></div>
+                <div class="flex-grow-1" style="min-width:220px;">
+                  <h6 class="mb-1">Site Logo</h6>
+                  <p class="text-muted small mb-2">Used on the website header and the reg desk video wall badge, in place of the "GOLIATH" text. Leave blank to keep the text version.</p>
+                  <div class="d-flex flex-wrap gap-2">
+                    <input type="file" id="siteLogoFile" class="form-control" accept="image/*" style="max-width:220px;">
+                    <button onclick="uploadSiteLogo()" class="btn btn-primary">Upload</button>
+                    <button onclick="clearSiteLogo()" class="btn btn-outline-secondary">Remove</button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <h6 class="mb-2">Ad Banners</h6>
-          <div class="card p-3 mb-4 shadow-sm">
-            <p class="text-muted small mb-2">Rotating carousel on the mobile website only. Design at <strong>1200x400px (3:1)</strong> so they fill the space edge-to-edge with no cropping.</p>
-            <div class="mb-2">
-              <input type="file" id="bannerFile" class="form-control" accept="image/*,video/*">
+            <h6 class="mb-2">Ad Banners</h6>
+            <div class="card p-3 mb-4 shadow-sm">
+              <p class="text-muted small mb-2">Rotating carousel on the mobile website only. Design at <strong>1200x400px (3:1)</strong> so they fill the space edge-to-edge with no cropping.</p>
+              <div class="mb-2">
+                <input type="file" id="bannerFile" class="form-control" accept="image/*,video/*">
+              </div>
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <input type="url" id="bannerLink" class="form-control" placeholder="Link (optional - tap the banner opens this)" style="flex:1 1 200px;">
+                <button onclick="uploadBanner()" class="btn btn-primary">Upload</button>
+              </div>
+              <div id="bannersWrap"></div>
             </div>
-            <div class="d-flex flex-wrap gap-2 mb-3">
-              <input type="url" id="bannerLink" class="form-control" placeholder="Link (optional - tap the banner opens this)" style="flex:1 1 200px;">
-              <button onclick="uploadBanner()" class="btn btn-primary">Upload</button>
-            </div>
-            <div id="bannersWrap"></div>
-          </div>
 
-          <h6 class="mb-2">Alt Desk Left Panel</h6>
-          <div class="card p-3 shadow-sm">
-            <p class="text-muted small mb-2">Replaces the floor map area on the Alt Desk screen. Add floor plans, ads, whatever you like - each has its own duration. Images are shown in full with no cropping regardless of shape.</p>
-            <div class="d-flex flex-wrap gap-2 mb-2">
-              <input type="file" id="displayCarouselFile" class="form-control" accept="image/*,video/*" style="max-width:260px;">
-              <button onclick="uploadDisplayCarouselImage()" class="btn btn-primary">Upload</button>
+            <h6 class="mb-2">Alt Desk Left Panel</h6>
+            <div class="card p-3 shadow-sm">
+              <p class="text-muted small mb-2">Replaces the floor map area on the Alt Desk screen. Add floor plans, ads, whatever you like - each has its own duration. Images are shown in full with no cropping regardless of shape.</p>
+              <div class="d-flex flex-wrap gap-2 mb-2">
+                <input type="file" id="displayCarouselFile" class="form-control" accept="image/*,video/*" style="max-width:260px;">
+                <button onclick="uploadDisplayCarouselImage()" class="btn btn-primary">Upload</button>
+              </div>
+              <div id="displayCarouselWrap"></div>
             </div>
-            <div id="displayCarouselWrap"></div>
           </div>
         </div>
-      </div>
+      </details>
 
     </div>
   </div>
@@ -519,6 +540,15 @@
     window.changeUpcomingPage = (delta) => {
       upcomingPageIndex += delta;
       renderUpcomingList();
+    };
+
+    window.toggleAddEventForm = () => {
+      const form = document.getElementById('addEventForm');
+      const btn = document.getElementById('addEventToggleBtn');
+      const isHidden = form.style.display === 'none';
+      form.style.display = isHidden ? 'block' : 'none';
+      btn.textContent = isHidden ? '− Hide Add Event Form' : '+ Add New Event';
+      if (isHidden) document.getElementById('newName').focus();
     };
 
     window.toggleShowPastEvents = (checked) => {

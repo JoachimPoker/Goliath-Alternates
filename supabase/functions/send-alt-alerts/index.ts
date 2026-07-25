@@ -16,10 +16,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 
-// How far ahead of someone's own number to alert them - e.g. target 45,
-// buffer 5, means they get pinged once calling reaches #40. Gives them
-// time to walk back to the desk rather than alerting exactly on #45.
-const ALERT_BUFFER = 5;
+// Alert threshold: fires once the calling number reaches or passes
+// someone's own number - no early warning buffer. Set this above 0 if
+// you ever want a "getting close" heads-up instead (e.g. 5 means
+// alerted once calling is within 5 of their number).
+const ALERT_BUFFER = 0;
 
 Deno.serve(async (req) => {
   try {
@@ -73,12 +74,6 @@ Deno.serve(async (req) => {
       Deno.env.get("VAPID_PRIVATE_KEY")!
     );
 
-    const payloadJson = JSON.stringify({
-      title: `${record.name}`,
-      body: `Now calling up to #${currentNum} - your number (#${subs[0]?.target_alt_number}) is close. Head back to the desk!`,
-      tag: `alt-${record.id}`
-    });
-
     const results = await Promise.allSettled(
       subs.map((sub) => {
         const pushSubscription = {
@@ -88,7 +83,7 @@ Deno.serve(async (req) => {
         // Each person's message is personalized to their own number.
         const personalized = JSON.stringify({
           title: `${record.name}`,
-          body: `Now calling up to #${currentNum} - your number (#${sub.target_alt_number}) is close. Head back to the desk!`,
+          body: `It's your number! Now calling #${currentNum} - your number (#${sub.target_alt_number}) is up. Head to the desk!`,
           tag: `alt-${record.id}`
         });
         return webpush.sendNotification(pushSubscription, personalized);
