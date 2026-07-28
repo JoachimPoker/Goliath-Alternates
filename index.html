@@ -96,10 +96,10 @@
             mainText = "ALL ALTERNATES"; mainColor = "text-danger"; 
         } 
         else if (t.status_mode === 'BREAK') { 
-            mainText = `AFTER BREAK: ALTS UP TO #${t.current_alt_number}`; mainColor = "text-info"; 
+            mainText = `AFTER BREAK: UP TO #${t.current_alt_number}`; mainColor = "text-info"; 
         } 
         else { 
-            mainText = `ALTERNATES UP TO #${t.current_alt_number}`; mainColor = "text-warning"; 
+            mainText = `CALLING UP TO #${t.current_alt_number}`; mainColor = "text-warning"; 
         }
 
         // 2. Render the Card
@@ -223,10 +223,7 @@
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
 
-    // Guarantee appends inline onto the name line; buy-in gets its own
-    // line right below; time/location comes last. Renders nothing extra
-    // if a field isn't set (true for all existing/imported events until
-    // filled in via admin).
+
     function nameWithGuarantee(t) {
       return t.guarantee ? `${t.name} <span class="schedule-gtd-inline">// ${t.guarantee}</span>` : t.name;
     }
@@ -234,16 +231,12 @@
       return t.buy_in ? `<div class="schedule-gtd">Buy-in: ${t.buy_in}</div>` : '';
     }
 
-    // --- 2a. LATER TODAY (shown alongside the active list, so you can
-    // see what's next without losing sight of what's live). Below it,
-    // a "Show Full Schedule" toggle always appears - collapsed by
-    // default, so the page length never grows with the size of the
-    // schedule. It's the person's own choice to open it. ---
     async function renderTodayRemaining(container) {
       const today = new Date().toISOString().split('T')[0];
       const { data: todayData } = await _supabase.from('tournaments').select('*')
         .eq('tournament_date', today)
         .eq('is_active', false)
+        .eq('is_finished', false)
         .order('start_time');
 
       const todayRows = todayData || [];
@@ -266,6 +259,7 @@
       // today's events already shown above), collapsed by default.
       const { data: restData } = await _supabase.from('tournaments').select('*')
         .eq('is_active', false)
+        .eq('is_finished', false)
         .gte('tournament_date', today)
         .order('tournament_date')
         .order('start_time');
@@ -317,6 +311,7 @@
       const today = new Date().toISOString().split('T')[0];
       const { data } = await _supabase.from('tournaments').select('*')
         .eq('is_active', false)
+        .eq('is_finished', false)
         .gte('tournament_date', today)
         .order('tournament_date')
         .order('start_time');
@@ -349,9 +344,6 @@
         `).join('')}
       `;
 
-      // Long festivals (a dozen+ days of events) make this unreadable if
-      // every day renders at once - show the next couple of days, and
-      // let people expand the rest if they want to plan further ahead.
       const VISIBLE_DAYS = 2;
       const dates = Object.keys(groups);
       const visibleDates = dates.slice(0, VISIBLE_DAYS);
@@ -450,28 +442,13 @@
     const hallState = {};
     let currentHallKey = 'hall3';
 
-    // Illustrator-exported SVGs tend to reuse generic class names (st0,
-    // st1, cls-1...) across separately-exported files. An embedded
-    // <style> block inside an injected SVG applies globally to the whole
-    // page, not just to its own SVG - so once multiple hall files are
-    // loaded together, two files sharing a class name silently override
-    // each other's colors (this was the actual cause of Hall 5 showing
-    // a white background: hall4.svg's ".st2 { fill:#fff }" was
-    // clobbering hall5.svg's own ".st2 { fill:none }", which its
-    // boundary and every table rely on). Renaming every class per-hall
-    // here avoids that regardless of what naming scheme was exported.
     function namespaceSvgClasses(svgText, key) {
       const styleMatch = svgText.match(/<style>([\s\S]*?)<\/style>/);
       if (!styleMatch) return svgText;
 
       const styleBlock = styleMatch[1];
       const classNames = new Set();
-      // Class selectors always start with a letter - this matters
-      // because without it, a decimal value like "font-size: 43.8px"
-      // gets misread as a class selector ".8px", and renaming it then
-      // corrupts the actual value into "43.8px-hall5" (invalid CSS,
-      // silently falls back to the browser default size). This is
-      // exactly what was making Hall 5's table numbers render tiny.
+
       const classRegex = /\.([a-zA-Z][a-zA-Z0-9_-]*)/g;
       let m;
       while ((m = classRegex.exec(styleBlock)) !== null) classNames.add(m[1]);

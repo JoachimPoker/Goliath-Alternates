@@ -97,11 +97,15 @@
 
       <!-- LIVE EVENTS + STATIONS: what staff touch constantly during
            the event - always visible, right at the top, no clicking
-           needed to get to it. -->
+           needed to get to it. When nothing's live, the Event Calendar
+           slides up to fill this space instead of leaving it blank
+           (see layoutCalendar()). -->
       <div class="row g-4 mb-2">
-        <div class="col-lg-7">
-          <h4 class="mb-3 text-success">🟢 Live Events</h4>
-          <div id="liveList" class="row g-3"></div>
+        <div class="col-lg-7" id="topLeftCol">
+          <div id="liveEventsSection">
+            <h4 class="mb-3 text-success">🟢 Live Events</h4>
+            <div id="liveList" class="row g-3"></div>
+          </div>
         </div>
         <div class="col-lg-5">
           <h4 class="mb-3">🎛️ Stations</h4>
@@ -115,7 +119,8 @@
            visible but the add-event form starts collapsed since
            browsing/going-live is more common than adding new ones. -->
       <div class="row g-4">
-        <div class="col-lg-7">
+        <div class="col-lg-7" id="calendarNormalSlot">
+          <div id="calendarSection">
           <h4 class="mb-3">📅 Event Calendar</h4>
 
           <button class="btn btn-outline-secondary btn-sm mb-3" onclick="toggleAddEventForm()" id="addEventToggleBtn">+ Add New Event</button>
@@ -139,11 +144,12 @@
           <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
             <div class="form-check m-0">
               <input class="form-check-input" type="checkbox" id="showPastEvents" onchange="toggleShowPastEvents(this.checked)">
-              <label class="form-check-label small" for="showPastEvents">Show past events</label>
+              <label class="form-check-label small" for="showPastEvents">Show past &amp; finished events</label>
             </div>
           </div>
           <div id="upcomingList" class="list-group shadow-sm mb-2"></div>
           <div id="upcomingPager" class="d-flex justify-content-center align-items-center gap-2"></div>
+          </div>
         </div>
 
         <div class="col-lg-5">
@@ -389,6 +395,27 @@
         .replace(/"/g, '&quot;');
     }
 
+    // When nothing's live, the Live Events column would otherwise just
+    // be a heading sitting above a big blank stretch (since the row
+    // matches Stations' height regardless). Moving the Calendar up to
+    // fill that space means nothing needs a long scroll past dead space
+    // to reach it - and it moves right back to its normal spot the
+    // moment something goes live.
+    function layoutCalendar(hasActiveEvents) {
+      const calendarSection = document.getElementById('calendarSection');
+      const liveEventsSection = document.getElementById('liveEventsSection');
+      const topLeftCol = document.getElementById('topLeftCol');
+      const normalSlot = document.getElementById('calendarNormalSlot');
+
+      if (hasActiveEvents) {
+        liveEventsSection.style.display = '';
+        normalSlot.appendChild(calendarSection);
+      } else {
+        liveEventsSection.style.display = 'none';
+        topLeftCol.appendChild(calendarSection);
+      }
+    }
+
     async function refreshAdmin() {
       const { data: tours } = await _supabase.from('tournaments').select('*').order('tournament_date', {ascending: true}).order('start_time', {ascending: true});
       const msgs = await _supabase.from('messages').select('*').order('created_at');
@@ -401,23 +428,35 @@
       loadStats();
       loadAlertsToggle();
 
+      layoutCalendar((tours || []).some(t => t.is_active));
+
       const liveDiv = document.getElementById('liveList');
       liveDiv.innerHTML = '';
       window._upcomingCache = [];
 
-      // RENDER TOURNAMENTS
-      (tours || []).forEach(t => {
+      // Live events get their own priority order (staff can reorder with
+      // the arrows below) - independent of the calendar's date/time
+      // ordering, which stays chronological.
+      const liveTournaments = (tours || [])
+        .filter(t => t.is_active)
+        .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+      window._liveTournamentsCache = liveTournaments;
+
+      liveTournaments.forEach((t, idx) => {
         const safeName = jsAttrEscape(t.name);
         const safeLoc = jsAttrEscape(t.location || '');
         const safeGuarantee = jsAttrEscape(t.guarantee || '');
         const safeBuyIn = jsAttrEscape(t.buy_in || '');
-        
-        if (t.is_active) {
-          const showNum = (t.status_mode === 'BATCH' || t.status_mode === 'BREAK');
-          liveDiv.innerHTML += `
+        const showNum = (t.status_mode === 'BATCH' || t.status_mode === 'BREAK');
+
+        liveDiv.innerHTML += `
           <div class="col-12">
             <div class="card p-3 border shadow-sm border-success" style="border-width:2px;">
               <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                <div class="d-flex gap-1 flex-shrink-0">
+                  <button class="btn btn-sm btn-light border icon-btn" onclick="moveLiveEvent(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} title="Move up">↑</button>
+                  <button class="btn btn-sm btn-light border icon-btn" onclick="moveLiveEvent(${idx}, 1)" ${idx === liveTournaments.length - 1 ? 'disabled' : ''} title="Move down">↓</button>
+                </div>
                 <div style="flex:1 1 auto; min-width:0;">
                    <h5 class="mb-0 fw-bold">${t.name}</h5>
                    ${(t.guarantee || t.buy_in) ? `<div class="small gtd-text fw-bold">${[t.guarantee, t.buy_in ? 'Buy-in: ' + t.buy_in : ''].filter(Boolean).join(' // ')}</div>` : ''}
@@ -448,9 +487,12 @@
               </div>
             </div>
           </div>`;
-        } else {
-          window._upcomingCache.push(t);
-        }
+      });
+
+      // Upcoming/finished events are unaffected by live priority - they
+      // still sort chronologically by date/time.
+      (tours || []).forEach(t => {
+        if (!t.is_active) window._upcomingCache.push(t);
       });
 
       renderUpcomingList();
@@ -488,7 +530,7 @@
 
       let rows = window._upcomingCache;
       if (!upcomingShowPast) {
-        rows = rows.filter(t => !t.tournament_date || t.tournament_date >= today);
+        rows = rows.filter(t => !t.is_finished && (!t.tournament_date || t.tournament_date >= today));
       }
 
       const totalPages = Math.max(1, Math.ceil(rows.length / UPCOMING_PAGE_SIZE));
@@ -508,15 +550,16 @@
           const safeBuyIn = jsAttrEscape(t.buy_in || '');
           const isPast = t.tournament_date && t.tournament_date < today;
           return `
-          <div class="list-group-item ${isPast ? 'opacity-75' : ''}">
+          <div class="list-group-item ${(isPast || t.is_finished) ? 'opacity-75' : ''}">
             <div class="d-flex justify-content-between align-items-start gap-2">
               <div style="flex:1 1 auto; min-width:0;">
                 <span class="badge bg-light text-dark border me-2">${t.tournament_date || 'No Date'}</span>
+                ${t.is_finished ? '<span class="badge bg-secondary me-2">Finished</span>' : ''}
                 <strong>${t.name}</strong>
               </div>
               <div class="d-flex gap-2" style="flex:0 0 auto;">
                 <button class="btn btn-sm btn-outline-secondary" onclick="openEdit('${t.id}', '${safeName}', '${t.start_time}', '${safeLoc}', '${t.tournament_date}', '${safeGuarantee}', '${safeBuyIn}')">Edit</button>
-                <button class="btn btn-sm btn-success fw-bold" onclick="toggleActive('${t.id}', true)">GO LIVE</button>
+                <button class="btn btn-sm btn-success fw-bold" onclick="toggleActive('${t.id}', true)">${t.is_finished ? 'Reactivate' : 'GO LIVE'}</button>
                 <button class="btn btn-sm text-danger border-0" onclick="deleteTourn('${t.id}')">X</button>
               </div>
             </div>
@@ -673,7 +716,14 @@
 
     // --- OTHER ACTIONS ---
     window.updateStatusMode = async (id, mode) => { await _supabase.from('tournaments').update({ status_mode: mode }).eq('id', id); refreshAdmin(); };
-    window.toggleActive = async (id, isActive) => { if(!isActive && !confirm("End this event?")) return; await _supabase.from('tournaments').update({ is_active: isActive }).eq('id', id); refreshAdmin(); };
+    window.toggleActive = async (id, isActive) => {
+      if (!isActive && !confirm("End this event? It'll drop off the calendar - use \"Show past & finished events\" if you need to bring it back.")) return;
+      await _supabase.from('tournaments').update({
+        is_active: isActive,
+        is_finished: !isActive // ending marks it finished; going live always clears it
+      }).eq('id', id);
+      refreshAdmin();
+    };
     window.addToSchedule = async () => {
       const date = document.getElementById('newDate').value || new Date().toISOString().split('T')[0];
       const loc = document.getElementById('newLoc').value;
@@ -789,6 +839,22 @@
       await _supabase.storage.from('banners').remove([path]);
       await _supabase.from('regdesk_live_images').delete().eq('id', id);
       refreshRegdeskLiveImages();
+    };
+
+    window.moveLiveEvent = async (idx, dir) => {
+      // Renumbers everyone currently live, sequentially, rather than
+      // just swapping the two items' raw sort_order values - swapping
+      // alone does nothing if they happen to share the same value,
+      // which is common since every tournament starts at the same
+      // default (0) until reordered for the first time.
+      const list = (window._liveTournamentsCache || []).slice();
+      const otherIdx = idx + dir;
+      if (otherIdx < 0 || otherIdx >= list.length) return;
+
+      [list[idx], list[otherIdx]] = [list[otherIdx], list[idx]];
+
+      await Promise.all(list.map((t, i) => _supabase.from('tournaments').update({ sort_order: i }).eq('id', t.id)));
+      refreshAdmin();
     };
 
     window.moveLiveImage = async (idx, dir) => {

@@ -15,7 +15,7 @@
     <div class="col-map">
       <div class="map-frame" id="mapFrame"></div>
       <div class="qr-section">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://www.goliathalts.com" class="qr-img">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://YOUR-SITE.web.app" class="qr-img">
         <p style="margin: 0.5vh 0 0 0; font-size: 1.5vh;">SCAN FOR ALERTS</p>
       </div>
     </div>
@@ -196,6 +196,7 @@
       const today = new Date().toISOString().split('T')[0];
       const { data } = await _supabase.from('tournaments').select('*')
         .eq('is_active', false)
+        .eq('is_finished', false)
         .gte('tournament_date', today)
         .order('tournament_date')
         .order('start_time');
@@ -297,13 +298,16 @@ async function loadTicker() {
 
     // 3. Left-panel carousel (floor plans, ads, whatever you like).
     // Each image has its own duration; a single image just shows
-    // statically. Falls back gracefully if the table is empty.
+    // statically. Elements are created once per item and kept alive
+    // (reused) between turns rather than rebuilt every cycle, so a
+    // video already loaded is never re-fetched just because its turn
+    // comes around again. Falls back gracefully if the table is empty.
     let mapImages = [];
     let mapIndex = 0;
     let mapTimer = null;
     let mapCurrentEl = null;
     let mapImagesSnapshot = null;
-    const MAP_TRANSITION_MS = 1000;
+    let mapElementCache = {}; // item id -> element, reused across turns
 
     async function loadMapCarousel() {
       const { data } = await _supabase.from('display_carousel_images').select('*').eq('is_active', true).order('sort_order');
@@ -316,8 +320,14 @@ async function loadTicker() {
       mapIndex = 0;
       if (mapTimer) clearTimeout(mapTimer);
 
-      const mapFrame = document.getElementById('mapFrame');
-      mapFrame.querySelectorAll('.map-img').forEach(el => el.remove());
+      // Drop cached elements for anything no longer in the active list.
+      const currentIds = new Set(mapImages.map(i => i.id));
+      Object.keys(mapElementCache).forEach(id => {
+        if (!currentIds.has(id)) {
+          mapElementCache[id].remove();
+          delete mapElementCache[id];
+        }
+      });
       mapCurrentEl = null;
 
       if (mapImages.length === 0) return;
@@ -326,7 +336,9 @@ async function loadTicker() {
       if (mapImages.length > 1) scheduleNextMapSlide();
     }
 
-    function createMapSlideElement(item) {
+    function getOrCreateMapSlideElement(item) {
+      if (mapElementCache[item.id]) return mapElementCache[item.id];
+
       let el;
       if (item.media_type === 'video') {
         el = document.createElement('video');
@@ -340,20 +352,18 @@ async function loadTicker() {
       }
       el.src = item.image_url;
       el.className = 'map-img';
+      document.getElementById('mapFrame').appendChild(el);
+      mapElementCache[item.id] = el;
       return el;
     }
 
     function showMapSlide(item) {
-      const mapFrame = document.getElementById('mapFrame');
-      const newEl = createMapSlideElement(item);
-      mapFrame.appendChild(newEl);
+      const newEl = getOrCreateMapSlideElement(item);
 
       requestAnimationFrame(() => {
         newEl.classList.add('active');
-        if (mapCurrentEl) {
-          const oldEl = mapCurrentEl;
-          oldEl.classList.remove('active');
-          setTimeout(() => oldEl.remove(), MAP_TRANSITION_MS);
+        if (mapCurrentEl && mapCurrentEl !== newEl) {
+          mapCurrentEl.classList.remove('active');
         }
         mapCurrentEl = newEl;
       });
@@ -370,13 +380,6 @@ async function loadTicker() {
       }, seconds * 1000);
     }
 
-    // --- INIT + REALTIME ---
-    // Ticker must run first: it sets .split-screen's height/margin
-    // depending on whether there are messages, and the tournament list
-    // needs that final size settled before it measures itself against
-    // it. Doing this out of order was why the list wasn't shrinking
-    // correctly - it was fitting against a taller box than what was
-    // actually visible.
     async function refreshDisplay() {
       await loadTicker();
       await loadTV();
@@ -389,10 +392,6 @@ async function loadTicker() {
 
     refreshDisplay();
 
-    // Safety net: this screen runs unattended for hours with nobody
-    // there to notice or refresh it if a realtime update is ever missed.
-    // Poll on a fixed interval regardless, so it can never drift stale
-    // for long.
     setInterval(refreshDisplay, 60000);
   </script>
 </body>
