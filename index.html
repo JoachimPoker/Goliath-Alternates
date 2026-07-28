@@ -113,7 +113,7 @@
           <div class="border-top border-secondary pt-3 mt-2 text-center">
             <div class="display-5 fw-bold ${mainColor}" style="line-height:1.1">${mainText}</div>
           </div>
-          ${alertsEnabled ? renderAlertBlock(t) : ''}
+          ${(alertsEnabled && (t.status_mode === 'BATCH' || t.status_mode === 'BREAK')) ? renderAlertBlock(t) : ''}
         </div>
       `}).join('');
 
