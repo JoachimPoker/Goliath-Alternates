@@ -133,8 +133,8 @@
       let statusText = '', cls = '';
       if (t.status_mode === 'OPEN') { statusText = 'Open Seating'; cls = 'success'; }
       else if (t.status_mode === 'ALL') { statusText = 'All Alternates'; cls = 'danger'; }
-      else if (t.status_mode === 'BREAK') { statusText = `After The Break Alternates Up To #${t.current_alt_number}`; cls = 'info'; }
-      else { statusText = `Alternates Up To #${t.current_alt_number}`; cls = 'gold'; }
+      else if (t.status_mode === 'BREAK') { statusText = `Up To #${t.current_alt_number}`; cls = 'info'; }
+      else { statusText = `Up To #${t.current_alt_number}`; cls = 'gold'; }
 
       nameEl.textContent = t.name;
       statusEl.textContent = statusText;
@@ -446,6 +446,15 @@
     // Poll on a fixed interval regardless, so it can never drift stale
     // for long.
     setInterval(refreshRegdesk, 60000);
+
+    // --- SCREEN HEALTH CHECK ---
+    // Entirely invisible on this screen - just a silent background
+    // write, checked by the admin dashboard only.
+    function sendHeartbeat() {
+      _supabase.from('screen_heartbeats').update({ last_seen: new Date().toISOString() }).eq('screen', 'reg_desk').then(() => {}).catch(() => {});
+    }
+    sendHeartbeat();
+    setInterval(sendHeartbeat, 60000);
   </script>
 </body>
 </html>

@@ -684,6 +684,16 @@
 
     window.addEventListener('DOMContentLoaded', initMaps);
 
+    // --- SCREEN HEALTH CHECK ---
+    // A tiny "I'm alive" write on a steady timer, entirely invisible on
+    // this page - nothing shows here, the only place this status is
+    // ever displayed is the admin dashboard's Screen Health card.
+    function sendHeartbeat() {
+      _supabase.from('screen_heartbeats').update({ last_seen: new Date().toISOString() }).eq('screen', 'hub').then(() => {}).catch(() => {});
+    }
+    sendHeartbeat();
+    setInterval(sendHeartbeat, 30000);
+
     // Initial Loaders
     function refreshAll() {
       loadHome();

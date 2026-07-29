@@ -38,6 +38,31 @@ Deno.serve(async (req) => {
   try {
     const payload = await req.json();
 
+    // Direct test call from the admin panel's "Send Me a Test Alert"
+    // button - a completely separate path from the real webhook flow
+    // below, so it can never touch real subscriber data or send
+    // anything to a real player.
+    if (payload.type === "TEST") {
+      console.log("Test alert requested");
+      webpush.setVapidDetails(
+        `mailto:${Deno.env.get("VAPID_CONTACT_EMAIL") ?? "admin@example.com"}`,
+        Deno.env.get("VAPID_PUBLIC_KEY")!,
+        Deno.env.get("VAPID_PRIVATE_KEY")!
+      );
+      try {
+        await webpush.sendNotification(payload.subscription, JSON.stringify({
+          title: "Test Alert",
+          body: "If you see this, your Alert Me pipeline is working correctly!",
+          tag: "goliath-test-alert"
+        }));
+        console.log("Test alert sent OK");
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      } catch (err) {
+        console.error("Test alert failed:", err);
+        return new Response(JSON.stringify({ ok: false, error: String(err) }), { status: 500 });
+      }
+    }
+
     if (payload.type !== "UPDATE") {
       console.log("Ignored: not an UPDATE event");
       return new Response("ignored (not an update)", { status: 200 });

@@ -380,6 +380,13 @@ async function loadTicker() {
       }, seconds * 1000);
     }
 
+    // --- INIT + REALTIME ---
+    // Ticker must run first: it sets .split-screen's height/margin
+    // depending on whether there are messages, and the tournament list
+    // needs that final size settled before it measures itself against
+    // it. Doing this out of order was why the list wasn't shrinking
+    // correctly - it was fitting against a taller box than what was
+    // actually visible.
     async function refreshDisplay() {
       await loadTicker();
       await loadTV();
@@ -392,7 +399,20 @@ async function loadTicker() {
 
     refreshDisplay();
 
+    // Safety net: this screen runs unattended for hours with nobody
+    // there to notice or refresh it if a realtime update is ever missed.
+    // Poll on a fixed interval regardless, so it can never drift stale
+    // for long.
     setInterval(refreshDisplay, 60000);
+
+    // --- SCREEN HEALTH CHECK ---
+    // Entirely invisible on this screen - just a silent background
+    // write, checked by the admin dashboard only.
+    function sendHeartbeat() {
+      _supabase.from('screen_heartbeats').update({ last_seen: new Date().toISOString() }).eq('screen', 'alt_desk').then(() => {}).catch(() => {});
+    }
+    sendHeartbeat();
+    setInterval(sendHeartbeat, 60000);
   </script>
 </body>
 </html>

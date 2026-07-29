@@ -113,6 +113,14 @@
         </div>
       </div>
 
+      <div class="card p-3 mb-2 shadow-sm">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+          <h6 class="mb-0">🖥️ Screen Health</h6>
+          <span class="text-muted small">Each screen checks in every 30-60s</span>
+        </div>
+        <div class="row g-2" id="screenHealthWrap"></div>
+      </div>
+
       <hr class="section-divider">
 
       <!-- CALENDAR + MESSAGES: used a few times a day, still always
@@ -140,6 +148,8 @@
               <div class="col-12"><button onclick="addToSchedule()" class="btn btn-secondary w-100">Add to Calendar</button></div>
             </div>
           </div>
+
+          <input type="text" id="calendarSearch" class="form-control form-control-sm mb-2" placeholder="Search events..." oninput="onCalendarSearchInput()">
 
           <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
             <div class="form-check m-0">
@@ -233,6 +243,11 @@
             <div class="form-check form-switch flex-shrink-0">
               <input class="form-check-input" type="checkbox" role="switch" id="alertsEnabledToggle" style="width:3em;height:1.5em;" onchange="toggleAlertsEnabled(this.checked)">
             </div>
+          </div>
+          <div class="border-top mt-3 pt-3">
+            <p class="text-muted small mb-2">Sends a real push notification to <strong>this device</strong> right now, bypassing everything else - a quick way to confirm the whole pipeline (this browser → Supabase → Google/Apple's push service) is actually working, without needing a real subscriber or changing any event's alt number.</p>
+            <button class="btn btn-outline-secondary btn-sm" onclick="sendTestAlert()" id="testAlertBtn">Send Me a Test Alert</button>
+            <span class="small ms-2" id="testAlertStatus"></span>
           </div>
         </div>
 
@@ -427,8 +442,19 @@
       refreshDisplayCarousel();
       loadStats();
       loadAlertsToggle();
+      loadScreenHealth();
 
       layoutCalendar((tours || []).some(t => t.is_active));
+
+      // Pending Alert Me subscriber counts, per tournament - only
+      // bother querying if something's actually live.
+      window._subscriberCounts = {};
+      if ((tours || []).some(t => t.is_active)) {
+        const { data: subCountRows } = await _supabase.from('push_subscriptions').select('tournament_id').eq('notified', false);
+        (subCountRows || []).forEach(r => {
+          window._subscriberCounts[r.tournament_id] = (window._subscriberCounts[r.tournament_id] || 0) + 1;
+        });
+      }
 
       const liveDiv = document.getElementById('liveList');
       liveDiv.innerHTML = '';
@@ -448,6 +474,7 @@
         const safeGuarantee = jsAttrEscape(t.guarantee || '');
         const safeBuyIn = jsAttrEscape(t.buy_in || '');
         const showNum = (t.status_mode === 'BATCH' || t.status_mode === 'BREAK');
+        const subCount = (window._subscriberCounts && window._subscriberCounts[t.id]) || 0;
 
         liveDiv.innerHTML += `
           <div class="col-12">
@@ -461,6 +488,7 @@
                    <h5 class="mb-0 fw-bold">${t.name}</h5>
                    ${(t.guarantee || t.buy_in) ? `<div class="small gtd-text fw-bold">${[t.guarantee, t.buy_in ? 'Buy-in: ' + t.buy_in : ''].filter(Boolean).join(' // ')}</div>` : ''}
                    <small class="text-muted">${t.start_time}${t.location ? ' // ' + t.location : ''}</small>
+                   ${(showNum && subCount > 0) ? `<div class="small text-muted">🔔 ${subCount} waiting for an alert</div>` : ''}
                 </div>
                 <div class="d-flex gap-2" style="flex:0 0 auto;">
                   <button class="btn btn-sm btn-outline-secondary" onclick="openEdit('${t.id}', '${safeName}', '${t.start_time}', '${safeLoc}', '${t.tournament_date}', '${safeGuarantee}', '${safeBuyIn}')">Edit</button>
@@ -521,7 +549,14 @@
     const UPCOMING_PAGE_SIZE = 10;
     let upcomingPageIndex = 0;
     let upcomingShowPast = false;
+    let upcomingSearchTerm = '';
     window._upcomingCache = [];
+
+    window.onCalendarSearchInput = () => {
+      upcomingSearchTerm = document.getElementById('calendarSearch').value.trim().toLowerCase();
+      upcomingPageIndex = 0;
+      renderUpcomingList();
+    };
 
     function renderUpcomingList() {
       const upcomingDiv = document.getElementById('upcomingList');
@@ -532,6 +567,9 @@
       if (!upcomingShowPast) {
         rows = rows.filter(t => !t.is_finished && (!t.tournament_date || t.tournament_date >= today));
       }
+      if (upcomingSearchTerm) {
+        rows = rows.filter(t => t.name.toLowerCase().includes(upcomingSearchTerm));
+      }
 
       const totalPages = Math.max(1, Math.ceil(rows.length / UPCOMING_PAGE_SIZE));
       if (upcomingPageIndex >= totalPages) upcomingPageIndex = totalPages - 1;
@@ -541,7 +579,10 @@
       const pageRows = rows.slice(start, start + UPCOMING_PAGE_SIZE);
 
       if (pageRows.length === 0) {
-        upcomingDiv.innerHTML = `<div class="list-group-item text-muted text-center small">${upcomingShowPast ? 'No events at all yet.' : 'Nothing upcoming right now.'}</div>`;
+        const emptyMsg = upcomingSearchTerm
+          ? 'No events match your search.'
+          : (upcomingShowPast ? 'No events at all yet.' : 'Nothing upcoming right now.');
+        upcomingDiv.innerHTML = `<div class="list-group-item text-muted text-center small">${emptyMsg}</div>`;
       } else {
         upcomingDiv.innerHTML = pageRows.map(t => {
           const safeName = jsAttrEscape(t.name);
@@ -605,6 +646,34 @@
     // fine at festival scale. If this ever needs to scale much further,
     // a SQL count/group-by via an RPC would be the next step instead of
     // pulling every row.
+    // --- SCREEN HEALTH CHECK ---
+    const SCREEN_INFO = {
+      hub: { label: 'Website', expectedSeconds: 30 },
+      alt_desk: { label: 'Alt Desk', expectedSeconds: 60 },
+      reg_desk: { label: 'Reg Desk', expectedSeconds: 60 }
+    };
+
+    async function loadScreenHealth() {
+      const { data } = await _supabase.from('screen_heartbeats').select('*');
+      const rows = data || [];
+      const now = Date.now();
+
+      const wrap = document.getElementById('screenHealthWrap');
+      wrap.innerHTML = Object.keys(SCREEN_INFO).map(key => {
+        const info = SCREEN_INFO[key];
+        const row = rows.find(r => r.screen === key);
+        if (!row) {
+          return `<div class="col-md-4"><span class="text-muted">⚪ ${info.label}: no data yet</span></div>`;
+        }
+        const secondsAgo = Math.max(0, Math.round((now - new Date(row.last_seen).getTime()) / 1000));
+        // Some buffer beyond the expected check-in interval for normal
+        // network jitter, before actually calling it unhealthy.
+        const isHealthy = secondsAgo < info.expectedSeconds * 3;
+        const label = secondsAgo < 60 ? `${secondsAgo}s ago` : `${Math.round(secondsAgo / 60)}m ago`;
+        return `<div class="col-md-4"><span>${isHealthy ? '🟢' : '🔴'} ${info.label}: seen ${label}</span></div>`;
+      }).join('');
+    }
+
     async function loadStats() {
       const { data } = await _supabase.from('page_views').select('created_at, referrer, device_type');
       const rows = data || [];
@@ -663,6 +732,89 @@
       if (error) {
         alert('Could not save: ' + error.message);
         document.getElementById('alertsEnabledToggle').checked = !checked;
+      }
+    };
+
+    // --- SEND TEST ALERT ---
+    // Same VAPID public key as the website's Alert Me button - both
+    // sides just need to agree on this one value, it's not a secret.
+    const VAPID_PUBLIC_KEY = 'BMxNqQvLECwicRo9Wb9-dPTMxG6rtuzL294BcpspmMIln0BLjk2-2qrc-KTw6AGYkKqHQWNemfxTuP9rB2UhKy4';
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+      return outputArray;
+    }
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+
+    window.sendTestAlert = async () => {
+      const statusEl = document.getElementById('testAlertStatus');
+      const btn = document.getElementById('testAlertBtn');
+      statusEl.textContent = 'Setting up...';
+      statusEl.className = 'small ms-2 text-muted';
+      btn.disabled = true;
+
+      try {
+        if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+          statusEl.textContent = 'This browser/device doesn\'t support push notifications.';
+          statusEl.className = 'small ms-2 text-danger';
+          return;
+        }
+
+        if (Notification.permission === 'denied') {
+          statusEl.textContent = 'Notifications are blocked for this site - enable them in your browser settings first.';
+          statusEl.className = 'small ms-2 text-danger';
+          return;
+        }
+        if (Notification.permission !== 'granted') {
+          const perm = await Notification.requestPermission();
+          if (perm !== 'granted') {
+            statusEl.textContent = 'Permission not granted.';
+            statusEl.className = 'small ms-2 text-danger';
+            return;
+          }
+        }
+
+        const registration = await navigator.serviceWorker.ready;
+        let subscription = await registration.pushManager.getSubscription();
+        if (!subscription) {
+          subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+          });
+        }
+
+        const { data: { session } } = await _supabase.auth.getSession();
+        const functionUrl = supabaseUrl + '/functions/v1/send-alt-alerts';
+
+        const resp = await fetch(functionUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + (session ? session.access_token : supabaseKey)
+          },
+          body: JSON.stringify({ type: 'TEST', subscription: subscription.toJSON() })
+        });
+
+        if (resp.ok) {
+          statusEl.textContent = '✓ Sent - you should see a notification any moment.';
+          statusEl.className = 'small ms-2 text-success';
+        } else {
+          const body = await resp.text();
+          statusEl.textContent = 'Failed: ' + body;
+          statusEl.className = 'small ms-2 text-danger';
+        }
+      } catch (e) {
+        statusEl.textContent = 'Error: ' + e.message;
+        statusEl.className = 'small ms-2 text-danger';
+      } finally {
+        btn.disabled = false;
       }
     };
 
@@ -1229,6 +1381,11 @@
 
     document.getElementById('newDate').valueAsDate = new Date();
     checkUser();
+
+    // Screen health specifically stays current even if nobody's
+    // clicking around in admin - everything else refreshes when you
+    // take an action, but this is worth checking on its own schedule.
+    setInterval(loadScreenHealth, 15000);
   </script>
 </body>
 </html>
