@@ -24,6 +24,8 @@
 
     <div id="tournamentList"></div>
 
+    <input type="text" id="scheduleSearch" class="form-control map-input mb-3" placeholder="Search the schedule..." oninput="onScheduleSearchInput()">
+
     <div id="todaySchedule"></div>
 
     <div id="bannerCarousel" class="banner-carousel" style="display:none;"></div>
@@ -69,6 +71,16 @@
     }
 
     // --- 2. LOAD HOME ---
+    let scheduleSearchTerm = '';
+    let scheduleSearchDebounce = null;
+    window.onScheduleSearchInput = () => {
+      clearTimeout(scheduleSearchDebounce);
+      scheduleSearchDebounce = setTimeout(() => {
+        scheduleSearchTerm = document.getElementById('scheduleSearch').value.trim().toLowerCase();
+        loadHome();
+      }, 250);
+    };
+
     async function loadHome() {
       const [{ data }, { data: settings }] = await Promise.all([
         _supabase.from('tournaments').select('*').eq('is_active', true).order('created_at'),
@@ -264,13 +276,15 @@
     // schedule. It's the person's own choice to open it. ---
     async function renderTodayRemaining(container) {
       const today = new Date().toISOString().split('T')[0];
+      const matchesSearch = (t) => !scheduleSearchTerm || t.name.toLowerCase().includes(scheduleSearchTerm);
+
       const { data: todayData } = await _supabase.from('tournaments').select('*')
         .eq('tournament_date', today)
         .eq('is_active', false)
         .eq('is_finished', false)
         .order('start_time');
 
-      const todayRows = todayData || [];
+      const todayRows = (todayData || []).filter(matchesSearch);
 
       let html = '';
       if (todayRows.length > 0) {
@@ -295,20 +309,27 @@
         .order('tournament_date')
         .order('start_time');
 
-      const restRows = (restData || []).filter(t => t.tournament_date !== today);
+      const restRows = (restData || []).filter(t => t.tournament_date !== today).filter(matchesSearch);
 
       if (restRows.length > 0) {
         const dayCount = new Set(restRows.map(t => t.tournament_date)).size;
         const showLabel = `Show Full Schedule (+${dayCount} more day${dayCount === 1 ? '' : 's'})`;
-        html += `<div id="fullScheduleMore" style="display:none;">${scheduleGroupsHtml(restRows)}</div>`;
-        html += `
-          <button id="fullScheduleBtn" class="btn btn-outline-light w-100 mt-2 mb-4" data-show-label="${showLabel}" onclick="toggleFullSchedule()">
-            ${showLabel}
-          </button>
-        `;
+        // Auto-expand while actively searching, so a match on a later
+        // day isn't hidden behind a click the person has no reason to
+        // know they need to make.
+        if (scheduleSearchTerm) {
+          html += `<div id="fullScheduleMore">${scheduleGroupsHtml(restRows)}</div>`;
+        } else {
+          html += `<div id="fullScheduleMore" style="display:none;">${scheduleGroupsHtml(restRows)}</div>`;
+          html += `
+            <button id="fullScheduleBtn" class="btn btn-outline-light w-100 mt-2 mb-4" data-show-label="${showLabel}" onclick="toggleFullSchedule()">
+              ${showLabel}
+            </button>
+          `;
+        }
       }
 
-      container.innerHTML = html;
+      container.innerHTML = html || (scheduleSearchTerm ? `<p class="text-center text-secondary py-3">No events match "${document.getElementById('scheduleSearch').value}".</p>` : '');
     }
 
     window.toggleFullSchedule = () => {
@@ -347,15 +368,23 @@
         .order('tournament_date')
         .order('start_time');
 
-      const rows = data || [];
+      const allRows = data || [];
+      const rows = scheduleSearchTerm
+        ? allRows.filter(t => t.name.toLowerCase().includes(scheduleSearchTerm))
+        : allRows;
 
-      if (rows.length === 0) {
+      if (allRows.length === 0) {
         container.innerHTML = `
           <div class="text-center py-5 text-secondary">
             <h3 class="fw-bold" style="opacity:0.5;">NO ACTIVE EVENTS</h3>
             <p>Please check back later.</p>
           </div>
         `;
+        return;
+      }
+
+      if (rows.length === 0) {
+        container.innerHTML = `<p class="text-center text-secondary py-3">No events match "${document.getElementById('scheduleSearch').value}".</p>`;
         return;
       }
 
@@ -378,7 +407,10 @@
       // Long festivals (a dozen+ days of events) make this unreadable if
       // every day renders at once - show the next couple of days, and
       // let people expand the rest if they want to plan further ahead.
-      const VISIBLE_DAYS = 2;
+      // While actively searching, show everything that matches instead
+      // of collapsing - a match on day 5 shouldn't need an extra click
+      // to even discover it exists.
+      const VISIBLE_DAYS = scheduleSearchTerm ? Object.keys(groups).length : 2;
       const dates = Object.keys(groups);
       const visibleDates = dates.slice(0, VISIBLE_DAYS);
       const hiddenDates = dates.slice(VISIBLE_DAYS);
