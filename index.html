@@ -358,6 +358,60 @@
       `).join('');
     }
 
+    // --- OFF-SEASON COUNTDOWN ---
+    // Shown only when there's genuinely nothing else to display (no
+    // live events, nothing upcoming) and admin has it switched on -
+    // styled identically to a real "Calling up to #X" card, just
+    // counting down days to next year's Goliath instead of an alt
+    // number. Turns into the actual "Immediate Seating" green card the
+    // day it hits zero.
+    const COUNTDOWN_FLAVOR_LINES = [
+      "sleeps until someone argues about chip counts again",
+      "days until the alt list becomes your entire personality again",
+      "days until \"just one more level\" ruins your sleep schedule",
+      "days of freedom before the ticker starts scrolling again",
+      "days until you forget what your own bed looks like",
+      "days until the first bad beat story of the festival",
+      "days until someone asks where the reg desk is",
+      "days until this website is useful again"
+    ];
+
+    function renderCountdownCard(daysLeft, year) {
+      if (daysLeft <= 0) {
+        return `
+          <div class="flat-card">
+            <div class="tourn-title">GOLIATH ${year}</div>
+            <div class="border-top border-secondary pt-3 mt-2 text-center">
+              <div class="display-5 fw-bold text-success" style="line-height:1.1">IMMEDIATE SEATING</div>
+            </div>
+            <p class="text-center text-muted small mt-3 mb-0">GOLIATH ${year} IS HERE</p>
+          </div>
+        `;
+      }
+      const line = COUNTDOWN_FLAVOR_LINES[daysLeft % COUNTDOWN_FLAVOR_LINES.length];
+      return `
+        <div class="flat-card">
+          <div class="tourn-title">GOLIATH ${year}</div>
+          <div class="border-top border-secondary pt-3 mt-2 text-center">
+            <div class="display-5 fw-bold text-warning" style="line-height:1.1">CALLING UP TO #${daysLeft}</div>
+          </div>
+          <p class="text-center text-muted small mt-3 mb-0">${daysLeft} ${line}</p>
+        </div>
+      `;
+    }
+
+    async function renderOffSeasonCountdown() {
+      const { data } = await _supabase.from('site_settings').select('countdown_enabled, next_goliath_date').eq('id', 1).maybeSingle();
+      if (!data || !data.countdown_enabled || !data.next_goliath_date) return null;
+
+      const target = new Date(data.next_goliath_date + 'T00:00:00');
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      const daysLeft = Math.ceil((target - now) / 86400000);
+
+      return renderCountdownCard(daysLeft, target.getFullYear());
+    }
+
     // --- 2b. UPCOMING SCHEDULE (shown when nothing is live) ---
     async function renderUpcomingSchedule(container) {
       const today = new Date().toISOString().split('T')[0];
@@ -374,7 +428,8 @@
         : allRows;
 
       if (allRows.length === 0) {
-        container.innerHTML = `
+        const countdownHtml = await renderOffSeasonCountdown();
+        container.innerHTML = countdownHtml || `
           <div class="text-center py-5 text-secondary">
             <h3 class="fw-bold" style="opacity:0.5;">NO ACTIVE EVENTS</h3>
             <p>Please check back later.</p>

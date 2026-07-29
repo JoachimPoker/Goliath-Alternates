@@ -251,6 +251,26 @@
           </div>
         </div>
 
+        <!-- OFF-SEASON COUNTDOWN -->
+        <div class="card p-3 mb-4 shadow-sm">
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+              <h6 class="mb-1">🎉 Off-Season Countdown</h6>
+              <p class="text-muted small mb-0">When there's genuinely nothing scheduled (no live events, nothing upcoming), the website shows a "Calling up to #X" style countdown to next year's Goliath instead of the plain "check back later" message - same card style as a real event, just counting down days. Only shows when this is on <strong>and</strong> there's actually nothing else to display, so it never competes with a real schedule.</p>
+            </div>
+            <div class="form-check form-switch flex-shrink-0">
+              <input class="form-check-input" type="checkbox" role="switch" id="countdownEnabledToggle" style="width:3em;height:1.5em;" onchange="toggleCountdownEnabled(this.checked)">
+            </div>
+          </div>
+          <div class="border-top mt-3 pt-3">
+            <label class="small text-muted mb-1 d-block">Next Goliath date</label>
+            <div class="d-flex gap-2 flex-wrap">
+              <input type="date" id="nextGoliathDate" class="form-control" style="max-width:220px;">
+              <button class="btn btn-outline-secondary btn-sm" onclick="saveCountdownDate()">Save Date</button>
+            </div>
+          </div>
+        </div>
+
         <div class="row g-4">
           <div class="col-lg-7">
             <h4 class="mb-3">📺 Reg Desk Video Wall</h4>
@@ -442,6 +462,7 @@
       refreshDisplayCarousel();
       loadStats();
       loadAlertsToggle();
+      loadCountdownSettings();
       loadScreenHealth();
 
       layoutCalendar((tours || []).some(t => t.is_active));
@@ -733,6 +754,29 @@
         alert('Could not save: ' + error.message);
         document.getElementById('alertsEnabledToggle').checked = !checked;
       }
+    };
+
+    // --- OFF-SEASON COUNTDOWN ---
+    async function loadCountdownSettings() {
+      const { data } = await _supabase.from('site_settings').select('countdown_enabled, next_goliath_date').eq('id', 1).maybeSingle();
+      document.getElementById('countdownEnabledToggle').checked = !!(data && data.countdown_enabled);
+      document.getElementById('nextGoliathDate').value = (data && data.next_goliath_date) || '';
+    }
+
+    window.toggleCountdownEnabled = async (checked) => {
+      const { error } = await _supabase.from('site_settings').upsert([{ id: 1, countdown_enabled: checked, updated_at: new Date().toISOString() }]);
+      if (error) {
+        alert('Could not save: ' + error.message);
+        document.getElementById('countdownEnabledToggle').checked = !checked;
+      }
+    };
+
+    window.saveCountdownDate = async () => {
+      const dateVal = document.getElementById('nextGoliathDate').value;
+      if (!dateVal) { alert('Pick a date first'); return; }
+      const { error } = await _supabase.from('site_settings').upsert([{ id: 1, next_goliath_date: dateVal, updated_at: new Date().toISOString() }]);
+      if (error) alert('Could not save: ' + error.message);
+      else alert('Saved!');
     };
 
     // --- SEND TEST ALERT ---
