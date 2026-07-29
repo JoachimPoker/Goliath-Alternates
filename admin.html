@@ -478,7 +478,6 @@
       }
 
       const liveDiv = document.getElementById('liveList');
-      liveDiv.innerHTML = '';
       window._upcomingCache = [];
 
       // Live events get their own priority order (staff can reorder with
@@ -489,7 +488,7 @@
         .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
       window._liveTournamentsCache = liveTournaments;
 
-      liveTournaments.forEach((t, idx) => {
+      const liveCardsHtml = liveTournaments.map((t, idx) => {
         const safeName = jsAttrEscape(t.name);
         const safeLoc = jsAttrEscape(t.location || '');
         const safeGuarantee = jsAttrEscape(t.guarantee || '');
@@ -497,7 +496,7 @@
         const showNum = (t.status_mode === 'BATCH' || t.status_mode === 'BREAK');
         const subCount = (window._subscriberCounts && window._subscriberCounts[t.id]) || 0;
 
-        liveDiv.innerHTML += `
+        return `
           <div class="col-12">
             <div class="card p-3 border shadow-sm border-success" style="border-width:2px;">
               <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
@@ -536,7 +535,9 @@
               </div>
             </div>
           </div>`;
-      });
+      }).join('');
+
+      liveDiv.innerHTML = liveCardsHtml;
 
       // Upcoming/finished events are unaffected by live priority - they
       // still sort chronologically by date/time.
@@ -955,9 +956,13 @@
 
     // --- REG DESK LIVE BACKGROUND IMAGES (multiple, each with its own duration) ---
     window._liveImagesCache = [];
+    let liveImagesSnapshot = null;
     async function refreshRegdeskLiveImages() {
       const { data } = await _supabase.from('regdesk_live_images').select('*').order('sort_order');
       const list = data || [];
+      const snapshot = JSON.stringify(list);
+      if (snapshot === liveImagesSnapshot) return; // nothing changed - don't rebuild (and destroy/recreate any video elements) for no reason
+      liveImagesSnapshot = snapshot;
       window._liveImagesCache = list;
       const wrap = document.getElementById('regdeskLiveWrap');
 
@@ -1065,9 +1070,13 @@
 
     // --- REG DESK IDLE IMAGES (multiple, each with its own duration) ---
     window._idleImagesCache = [];
+    let idleImagesSnapshot = null;
     async function refreshRegdeskIdleImages() {
       const { data } = await _supabase.from('regdesk_idle_images').select('*').order('sort_order');
       const list = data || [];
+      const snapshot = JSON.stringify(list);
+      if (snapshot === idleImagesSnapshot) return; // nothing changed - don't rebuild (and destroy/recreate any video elements) for no reason
+      idleImagesSnapshot = snapshot;
       window._idleImagesCache = list;
       const wrap = document.getElementById('regdeskIdleWrap');
 
@@ -1201,9 +1210,13 @@
 
     // --- ALT DESK LEFT-PANEL CAROUSEL ---
     window._displayCarouselCache = [];
+    let displayCarouselSnapshot = null;
     async function refreshDisplayCarousel() {
       const { data } = await _supabase.from('display_carousel_images').select('*').order('sort_order');
       const list = data || [];
+      const snapshot = JSON.stringify(list);
+      if (snapshot === displayCarouselSnapshot) return; // nothing changed - don't rebuild (and destroy/recreate any video elements) for no reason
+      displayCarouselSnapshot = snapshot;
       window._displayCarouselCache = list;
       const wrap = document.getElementById('displayCarouselWrap');
 
@@ -1331,9 +1344,13 @@
 
     // --- AD BANNERS ---
     window._bannersCache = [];
+    let bannersSnapshot = null;
     async function refreshBanners() {
       const { data } = await _supabase.from('banners').select('*').order('sort_order');
       const list = data || [];
+      const snapshot = JSON.stringify(list);
+      if (snapshot === bannersSnapshot) return; // nothing changed - don't rebuild (and destroy/recreate any video elements) for no reason
+      bannersSnapshot = snapshot;
       window._bannersCache = list;
       const wrap = document.getElementById('bannersWrap');
 
