@@ -55,15 +55,7 @@
       <p class="text-secondary small">DAY 2 TABLE &amp; SEAT LOOKUP</p>
     </div>
 
-    <div class="d-flex gap-2 flex-wrap mb-3">
-      <input type="text" id="seatSearch" class="form-control map-input" placeholder="Search by name or table #..." style="flex:2 1 220px;" oninput="onSearchInput()">
-      <select id="pageSizeSelect" class="form-select map-input" style="flex:0 1 160px;" onchange="onPageSizeChange()">
-        <option value="25">25 per page</option>
-        <option value="50" selected>50 per page</option>
-        <option value="100">100 per page</option>
-        <option value="250">250 per page</option>
-      </select>
-    </div>
+    <input type="text" id="seatSearch" class="form-control map-input mb-3" placeholder="Search by name or table #..." oninput="onSearchInput()">
 
     <div class="d-flex gap-2 flex-wrap mb-3">
       <button type="button" class="badge-filter-btn" id="filterCashBoost" onclick="toggleBadgeFilter('GG Cash Boost', 'filterCashBoost')">Cash Boost</button>
@@ -73,7 +65,6 @@
     <div id="seatCount" class="text-secondary small mb-2"></div>
 
     <div id="seatContent"></div>
-    <div id="seatPager" class="d-flex justify-content-center align-items-center gap-2 mt-3"></div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -88,9 +79,7 @@
     let sortField = 'table_number';
     let sortAsc = true;
     let searchTerm = '';
-    let currentPage = 0;
     let activeBadgeFilters = new Set();
-    let pageSize = 50;
     let seatDrawSnapshot = null;
     let searchDebounce = null;
 
@@ -130,7 +119,6 @@
         sortField = field;
         sortAsc = true;
       }
-      currentPage = 0;
       render();
     };
 
@@ -141,20 +129,7 @@
         activeBadgeFilters.add(badge);
       }
       document.getElementById(btnId).classList.toggle('active');
-      currentPage = 0;
       render();
-    };
-
-    window.onPageSizeChange = () => {
-      pageSize = parseInt(document.getElementById('pageSizeSelect').value, 10);
-      currentPage = 0;
-      render();
-    };
-
-    window.gotoPage = (page) => {
-      currentPage = page;
-      render();
-      document.getElementById('seatContent').scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
     window.onSearchInput = () => {
@@ -163,7 +138,6 @@
       clearTimeout(searchDebounce);
       searchDebounce = setTimeout(() => {
         searchTerm = document.getElementById('seatSearch').value.trim().toLowerCase();
-        currentPage = 0;
         render();
       }, 150);
     };
@@ -232,18 +206,10 @@
       const anyFilterActive = searchTerm || activeBadgeFilters.size > 0;
       countEl.textContent = anyFilterActive ? `${rows.length} of ${allRows.length} players` : `${allRows.length} players`;
 
-      const pagerEl = document.getElementById('seatPager');
-
       if (rows.length === 0) {
         content.innerHTML = `<p class="text-center text-secondary py-4">No players match your search.</p>`;
-        pagerEl.innerHTML = '';
         return;
       }
-
-      const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
-      if (currentPage >= totalPages) currentPage = totalPages - 1;
-      if (currentPage < 0) currentPage = 0;
-      const pageRows = rows.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
       const arrow = (field) => {
         if (field !== sortField) return '<span class="sort-arrow">⇅</span>';
@@ -253,9 +219,9 @@
       const badgesHtml = (r) => (r.tags || []).map(t => `<span class="tag-badge ${isSpecialBadge(t) ? 'tag-special' : 'tag-flight'}">${t}</span>`).join('');
 
       // Desktop: a normal sortable table. Mobile: a stacked card per
-      // player - same data, same page, just laid out to actually fit a
-      // phone screen instead of forcing a sideways scroll through six
-      // columns.
+      // player - same data, just laid out to actually fit a phone
+      // screen instead of forcing a sideways scroll through six
+      // columns. One long page - no pagination.
       content.innerHTML = `
         <div class="seat-table-wrap flat-card d-none d-md-block">
           <table class="seat-table">
@@ -270,7 +236,7 @@
               </tr>
             </thead>
             <tbody>
-              ${pageRows.map(r => `
+              ${rows.map(r => `
                 <tr>
                   <td>${r.first_name || ''}</td>
                   <td>${r.last_name || ''}</td>
@@ -290,7 +256,7 @@
             <span onclick="setSort('table_number')" style="cursor:pointer;">Table-Seat ${arrow('table_number')}</span>
             <span onclick="setSort('chip_count')" style="cursor:pointer;">Chips ${arrow('chip_count')}</span>
           </div>
-          ${pageRows.map(r => `
+          ${rows.map(r => `
             <div class="seat-card">
               <div class="d-flex justify-content-between align-items-baseline gap-2">
                 <span class="seat-card-name">${r.first_name || ''} ${r.last_name || ''}</span>
@@ -304,12 +270,6 @@
           `).join('')}
         </div>
       `;
-
-      pagerEl.innerHTML = totalPages > 1 ? `
-        <button class="btn btn-outline-light btn-sm" onclick="gotoPage(${currentPage - 1})" ${currentPage === 0 ? 'disabled' : ''}>‹ Prev</button>
-        <span class="text-secondary small">Page ${currentPage + 1} of ${totalPages}</span>
-        <button class="btn btn-outline-light btn-sm" onclick="gotoPage(${currentPage + 1})" ${currentPage === totalPages - 1 ? 'disabled' : ''}>Next ›</button>
-      ` : '';
     }
 
     loadSeatDraw();
