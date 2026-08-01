@@ -84,6 +84,7 @@
           <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">Open Screens</button>
           <ul class="dropdown-menu dropdown-menu-end">
             <li><a class="dropdown-item" href="index.html" target="_blank">🌐 Website</a></li>
+            <li><a class="dropdown-item" href="seatdraw.html" target="_blank">🪑 Seat Draw</a></li>
             <li><a class="dropdown-item" href="display.html" target="_blank">🖥️ Alt Desk</a></li>
             <li><a class="dropdown-item" href="regdesk.html" target="_blank">🛎️ Reg Desk</a></li>
           </ul>
@@ -188,6 +189,30 @@
             <ul id="msgList" class="list-group list-group-flush small"></ul>
           </div>
         </div>
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- DAY 2 SEAT DRAW -->
+      <h4 class="mb-3">🪑 Day 2 Seat Draw</h4>
+      <div class="card p-3 mb-4 shadow-sm">
+        <p class="text-muted small mb-2">
+          Upload the export from your tournament software (columns like <strong>Forename, Surname, TableNumber,
+          SeatNumber, ChipCount, DayDetails, GDPR, GG Cash Boost, GG Last Longer, Chipleaders</strong> are all
+          recognized automatically) or a simpler sheet with just <strong>First Name, Last Name, Table, Seat, Chips,
+          Badges</strong>. <strong>If a GDPR column is present, anyone marked anything other than "Yes" still gets
+          imported so they can find their seat, but their name is reduced to initials only</strong>
+          (e.g. "Michael Crooks" becomes "M. C.") - their real name is never stored, not just hidden.
+          <strong>Importing replaces the entire current seat draw</strong> - this is meant for a one-time
+          full upload, not incremental edits.
+        </p>
+        <div class="d-flex flex-wrap gap-2 mb-2">
+          <input type="file" id="seatDrawFile" class="form-control" accept=".xlsx,.xls,.csv" style="max-width:300px;">
+          <button class="btn btn-primary" onclick="importSeatDraw()">Import (Replace All)</button>
+          <button class="btn btn-outline-danger" onclick="clearSeatDraw()">Clear All</button>
+        </div>
+        <div id="seatDrawStatus" class="small"></div>
+        <div id="seatDrawSummary" class="small text-muted mt-2"></div>
       </div>
 
       <hr class="section-divider">
@@ -383,6 +408,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/supabase-config.js"></script>
   
@@ -464,6 +490,7 @@
       loadAlertsToggle();
       loadCountdownSettings();
       loadScreenHealth();
+      loadSeatDrawSummary();
 
       layoutCalendar((tours || []).some(t => t.is_active));
 
@@ -1441,6 +1468,164 @@
     };
 
     document.getElementById('newDate').valueAsDate = new Date();
+    // --- DAY 2 SEAT DRAW ---
+    function getCol(row, names) {
+      for (const key of Object.keys(row)) {
+        if (names.includes(key.trim().toLowerCase())) return row[key];
+      }
+      return '';
+    }
+
+    async function loadSeatDrawSummary() {
+      const { count } = await _supabase.from('seat_draw').select('id', { count: 'exact', head: true });
+      document.getElementById('seatDrawSummary').textContent = count
+        ? `Currently showing ${count} player${count === 1 ? '' : 's'}.`
+        : 'No seat draw uploaded yet.';
+    }
+
+    window.importSeatDraw = async () => {
+      const fileInput = document.getElementById('seatDrawFile');
+      const file = fileInput.files[0];
+      const statusEl = document.getElementById('seatDrawStatus');
+
+      if (!file) {
+        statusEl.textContent = 'Choose a file first';
+        statusEl.className = 'small text-danger';
+        return;
+      }
+
+      statusEl.textContent = 'Reading file...';
+      statusEl.className = 'small text-muted';
+
+      try {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer);
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+        if (rawRows.length === 0) {
+          statusEl.textContent = 'No rows found in that file.';
+          statusEl.className = 'small text-danger';
+          return;
+        }
+
+        const gdprAnonymized = { count: 0 };
+
+        // First initial + period - e.g. "Michael" -> "M." Deliberately
+        // done here at import time, not at display time, so a
+        // non-consenting player's actual full name is never even
+        // stored anywhere in the public dataset - not just hidden by
+        // the page, genuinely never retained.
+        function toInitial(name) {
+          const trimmed = String(name || '').trim();
+          return trimmed ? trimmed.charAt(0).toUpperCase() + '.' : '';
+        }
+
+        const parsed = rawRows.map(row => {
+          const rawFirst = String(getCol(row, ['first name', 'firstname', 'name', 'forename'])).trim();
+          const rawLast = String(getCol(row, ['last name', 'lastname', 'surname'])).trim();
+
+          // Without GDPR consent, this player still needs to be able to
+          // find their own seat - just with their name reduced to
+          // initials rather than left out entirely.
+          const hasGdprColumn = Object.keys(row).some(k => k.trim().toLowerCase() === 'gdpr');
+          const consented = !hasGdprColumn || String(getCol(row, ['gdpr'])).trim().toLowerCase() === 'yes';
+          if (!consented) gdprAnonymized.count++;
+
+          const chipsRaw = String(getCol(row, ['chips', 'chip count', 'stack', 'chipcount'])).replace(/,/g, '').trim();
+
+          const tags = [];
+          // A pre-formatted chipleader badge (e.g. "Day 1A Chipleader")
+          // replaces the plain flight badge rather than sitting
+          // alongside it - only one of these two ever applies per row.
+          const chipleaderVal = String(getCol(row, ['chipleaders', 'chipleader'])).trim();
+          if (chipleaderVal) {
+            tags.push(chipleaderVal);
+          } else {
+            const dayCode = String(getCol(row, ['daydetails', 'day details', 'flight', 'day'])).trim();
+            if (dayCode) tags.push(/^day/i.test(dayCode) ? dayCode : `Day ${dayCode}`);
+          }
+          if (String(getCol(row, ['gg cash boost'])).trim()) tags.push('GG Cash Boost');
+          if (String(getCol(row, ['gg last longer'])).trim()) tags.push('GG Last Longer');
+
+          // Fallback for a simpler spreadsheet that doesn't have the
+          // specialized per-badge columns above - one combined column
+          // instead, comma-separated.
+          if (tags.length === 0) {
+            const tagsRaw = getCol(row, ['tags', 'tag', 'badges', 'badge']);
+            tags.push(...String(tagsRaw || '').split(/[,;]/).map(t => t.trim()).filter(Boolean));
+          }
+
+          return {
+            first_name: consented ? rawFirst : toInitial(rawFirst),
+            last_name: consented ? rawLast : toInitial(rawLast),
+            table_number: parseInt(getCol(row, ['table', 'table number', 'table #', 'tableno', 'tablenumber'])) || null,
+            seat_number: parseInt(getCol(row, ['seat', 'seat number', 'seat #', 'seatno', 'seatnumber'])) || null,
+            chip_count: chipsRaw ? parseInt(chipsRaw) : null,
+            tags
+          };
+        }).filter(r => r && (r.first_name || r.last_name));
+
+        if (parsed.length === 0) {
+          statusEl.textContent = 'Could not find any valid rows - check the column headers match First Name/Forename, Last Name/Surname, Table, Seat, Chips.';
+          statusEl.className = 'small text-danger';
+          return;
+        }
+
+        const gdprNote = gdprAnonymized.count > 0
+          ? ` (${gdprAnonymized.count} player${gdprAnonymized.count === 1 ? '' : 's'} without GDPR consent will show as initials only)`
+          : '';
+
+        if (!confirm(`This will REPLACE the entire current seat draw with ${parsed.length} player${parsed.length === 1 ? '' : 's'} from this file${gdprNote}. Continue?`)) {
+          statusEl.textContent = '';
+          return;
+        }
+
+        statusEl.textContent = 'Uploading...';
+
+        const { error: delError } = await _supabase.from('seat_draw').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        if (delError) {
+          statusEl.textContent = 'Could not clear existing data: ' + delError.message;
+          statusEl.className = 'small text-danger';
+          return;
+        }
+
+        const BATCH_SIZE = 500;
+        for (let i = 0; i < parsed.length; i += BATCH_SIZE) {
+          const batch = parsed.slice(i, i + BATCH_SIZE);
+          const { error } = await _supabase.from('seat_draw').insert(batch);
+          if (error) {
+            statusEl.textContent = `Error partway through (some rows may be saved): ${error.message}`;
+            statusEl.className = 'small text-danger';
+            loadSeatDrawSummary();
+            return;
+          }
+        }
+
+        statusEl.textContent = `✓ Imported ${parsed.length} player${parsed.length === 1 ? '' : 's'}.${gdprNote}`;
+        statusEl.className = 'small text-success';
+        fileInput.value = '';
+        loadSeatDrawSummary();
+      } catch (e) {
+        statusEl.textContent = 'Error reading file: ' + e.message;
+        statusEl.className = 'small text-danger';
+      }
+    };
+
+    window.clearSeatDraw = async () => {
+      if (!confirm('Delete ALL seat draw entries? This cannot be undone.')) return;
+      const statusEl = document.getElementById('seatDrawStatus');
+      const { error } = await _supabase.from('seat_draw').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error) {
+        statusEl.textContent = 'Could not clear: ' + error.message;
+        statusEl.className = 'small text-danger';
+        return;
+      }
+      statusEl.textContent = 'Cleared.';
+      statusEl.className = 'small text-success';
+      loadSeatDrawSummary();
+    };
+
     checkUser();
 
     // Screen health specifically stays current even if nobody's

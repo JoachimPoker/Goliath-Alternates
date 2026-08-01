@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Goliath Seat Draw</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="main.css">
+  <style>
+    .seat-table-wrap { overflow-x: auto; padding: 0; }
+    table.seat-table { width: 100%; border-collapse: collapse; }
+    table.seat-table th {
+      cursor: pointer; user-select: none;
+      padding: 12px 14px; text-align: left;
+      border-bottom: 2px solid var(--text-gold);
+      color: var(--text-gold); font-weight: 700; text-transform: uppercase; font-size: 0.8rem;
+      white-space: nowrap;
+    }
+    table.seat-table th:hover { background: rgba(255,255,255,0.04); }
+    table.seat-table td { padding: 12px 14px; border-bottom: 1px solid #333; font-size: 0.95rem; white-space: nowrap; }
+    table.seat-table tbody tr:hover { background: rgba(255,255,255,0.03); }
+    .sort-arrow { opacity: 0.35; font-size: 0.7em; margin-left: 4px; }
+    .sort-arrow.active { opacity: 1; }
+    .tag-badge {
+      display: inline-block; padding: 2px 9px; border-radius: 10px;
+      font-size: 0.7rem; font-weight: 700; margin: 1px 3px 1px 0; white-space: nowrap;
+    }
+    .tag-flight { background: #333; color: #ccc; }
+    .tag-special { background: var(--text-gold); color: #000; }
+
+    .badge-filter-btn {
+      background: transparent; border: 1px solid var(--text-gold); color: var(--text-gold);
+      border-radius: 20px; padding: 6px 16px; font-size: 0.85rem; font-weight: 700;
+      cursor: pointer; transition: background 0.15s, color 0.15s;
+    }
+    .badge-filter-btn.active { background: var(--text-gold); color: #000; }
+
+    /* On narrow screens, a 6-column table either overflows or gets
+       cramped - a stacked card per player reads far better on a phone,
+       which is realistically how most people will actually check
+       this. Table markup below is desktop-only; cards are mobile-only -
+       same data, same sort/filter/page state, just two renderings. */
+    .seat-card {
+      background: #1e1e2f; border: 1px solid #333; border-radius: 10px;
+      padding: 12px 14px; margin-bottom: 10px;
+    }
+    .seat-card-name { font-weight: 700; font-size: 1.05rem; }
+    .seat-card-meta { color: #aaa; font-size: 0.85rem; margin-top: 2px; }
+    .seat-card-badges { margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div class="container py-4">
+    <div class="text-center mb-4 border-bottom border-secondary pb-3">
+      <h2 style="color:var(--text-gold); font-weight:900; letter-spacing:1px;">GOLIATH SEAT DRAW</h2>
+      <p class="text-secondary small">DAY 2 TABLE &amp; SEAT LOOKUP</p>
+    </div>
+
+    <div class="d-flex gap-2 flex-wrap mb-3">
+      <input type="text" id="seatSearch" class="form-control map-input" placeholder="Search by name or table #..." style="flex:2 1 220px;" oninput="onSearchInput()">
+      <select id="pageSizeSelect" class="form-select map-input" style="flex:0 1 160px;" onchange="onPageSizeChange()">
+        <option value="25">25 per page</option>
+        <option value="50" selected>50 per page</option>
+        <option value="100">100 per page</option>
+        <option value="250">250 per page</option>
+      </select>
+    </div>
+
+    <div class="d-flex gap-2 flex-wrap mb-3">
+      <button type="button" class="badge-filter-btn" id="filterCashBoost" onclick="toggleBadgeFilter('GG Cash Boost', 'filterCashBoost')">Cash Boost</button>
+      <button type="button" class="badge-filter-btn" id="filterLastLonger" onclick="toggleBadgeFilter('GG Last Longer', 'filterLastLonger')">GG LPS</button>
+    </div>
+
+    <div id="seatCount" class="text-secondary small mb-2"></div>
+
+    <div id="seatContent"></div>
+    <div id="seatPager" class="d-flex justify-content-center align-items-center gap-2 mt-3"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-config.js"></script>
+  <script>
+    let allRows = [];
+    // Default sort is Table, tie-broken by Seat - matches how someone
+    // actually reads a seating chart (1-1, 1-2, 1-3, 2-1, 2-2...)
+    // rather than sorting by table number alone, which would leave
+    // players at the same table in an arbitrary order relative to
+    // each other.
+    let sortField = 'table_number';
+    let sortAsc = true;
+    let searchTerm = '';
+    let currentPage = 0;
+    let activeBadgeFilters = new Set();
+    let pageSize = 50;
+    let seatDrawSnapshot = null;
+    let searchDebounce = null;
+
+    // A badge is "special" (highlighted gold) if it's a chipleader badge
+    // for a specific flight (e.g. "Day 1A Chipleader" - only 9 of these
+    // ever exist, one per flight) or a GG promo (Last Longer, Cash
+    // Boost, etc - any number of players can have these). Everything
+    // else (a plain flight badge like "Day 1A") is just informational.
+    function isSpecialBadge(badge) {
+      return /chipleader/i.test(badge) || /^GG\b/i.test(badge);
+    }
+
+    async function loadSeatDraw() {
+      // Explicit generous limit - PostgREST defaults to capping a
+      // select at 1000 rows, and a field of ~991 players sits close
+      // enough to that ceiling that it's worth being explicit rather
+      // than risk silently truncating the last few players, now or as
+      // headcount grows in future years.
+      const { data } = await _supabase.from('seat_draw').select('*').limit(5000);
+      const rows = data || [];
+
+      // This data is essentially static once uploaded - skip the
+      // (moderately expensive, at ~1000 rows) re-sort/re-render on a
+      // poll that found nothing new.
+      const snapshot = JSON.stringify(rows);
+      if (snapshot === seatDrawSnapshot) return;
+      seatDrawSnapshot = snapshot;
+
+      allRows = rows;
+      render();
+    }
+
+    window.setSort = (field) => {
+      if (sortField === field) {
+        sortAsc = !sortAsc;
+      } else {
+        sortField = field;
+        sortAsc = true;
+      }
+      currentPage = 0;
+      render();
+    };
+
+    window.toggleBadgeFilter = (badge, btnId) => {
+      if (activeBadgeFilters.has(badge)) {
+        activeBadgeFilters.delete(badge);
+      } else {
+        activeBadgeFilters.add(badge);
+      }
+      document.getElementById(btnId).classList.toggle('active');
+      currentPage = 0;
+      render();
+    };
+
+    window.onPageSizeChange = () => {
+      pageSize = parseInt(document.getElementById('pageSizeSelect').value, 10);
+      currentPage = 0;
+      render();
+    };
+
+    window.gotoPage = (page) => {
+      currentPage = page;
+      render();
+      document.getElementById('seatContent').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
+    window.onSearchInput = () => {
+      // Light debounce so typing a name doesn't re-filter/re-sort/
+      // re-render a ~1000-row table on every single keystroke.
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        searchTerm = document.getElementById('seatSearch').value.trim().toLowerCase();
+        currentPage = 0;
+        render();
+      }, 150);
+    };
+
+    function compareRows(a, b) {
+      if (sortField === 'table_number') {
+        const at = a.table_number ?? -Infinity, bt = b.table_number ?? -Infinity;
+        if (at !== bt) return sortAsc ? at - bt : bt - at;
+        // Seat always ascends within a table regardless of which way
+        // the table sort is currently pointing - "reverse the tables"
+        // has an obvious meaning, "reverse the seats too" doesn't.
+        return (a.seat_number ?? -Infinity) - (b.seat_number ?? -Infinity);
+      }
+
+      let av = a[sortField], bv = b[sortField];
+      if (typeof av === 'string' || typeof bv === 'string') {
+        av = (av || '').toString().toLowerCase();
+        bv = (bv || '').toString().toLowerCase();
+      } else {
+        av = av ?? -Infinity;
+        bv = bv ?? -Infinity;
+      }
+      if (av < bv) return sortAsc ? -1 : 1;
+      if (av > bv) return sortAsc ? 1 : -1;
+      return 0;
+    }
+
+    function render() {
+      const content = document.getElementById('seatContent');
+      const countEl = document.getElementById('seatCount');
+
+      if (allRows.length === 0) {
+        countEl.textContent = '';
+        content.innerHTML = `
+          <div class="text-center py-5 text-secondary">
+            <h4 class="fw-bold" style="opacity:0.5;">SEAT DRAW NOT YET AVAILABLE</h4>
+            <p>Check back once Day 2 tables are set.</p>
+          </div>
+        `;
+        return;
+      }
+
+      let rows = allRows;
+
+      if (activeBadgeFilters.size > 0) {
+        rows = rows.filter(r => (r.tags || []).some(t => activeBadgeFilters.has(t)));
+      }
+
+      if (searchTerm) {
+        // A purely numeric search means "find this table", not a name -
+        // exact match, not substring, so searching "1" doesn't also
+        // pull in tables 10-19, 21, 31, etc.
+        if (/^\d+$/.test(searchTerm)) {
+          const tableNum = parseInt(searchTerm, 10);
+          rows = rows.filter(r => r.table_number === tableNum);
+        } else {
+          rows = rows.filter(r =>
+            (r.first_name || '').toLowerCase().includes(searchTerm) ||
+            (r.last_name || '').toLowerCase().includes(searchTerm)
+          );
+        }
+      }
+
+      rows = rows.slice().sort(compareRows);
+
+      const anyFilterActive = searchTerm || activeBadgeFilters.size > 0;
+      countEl.textContent = anyFilterActive ? `${rows.length} of ${allRows.length} players` : `${allRows.length} players`;
+
+      const pagerEl = document.getElementById('seatPager');
+
+      if (rows.length === 0) {
+        content.innerHTML = `<p class="text-center text-secondary py-4">No players match your search.</p>`;
+        pagerEl.innerHTML = '';
+        return;
+      }
+
+      const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+      if (currentPage >= totalPages) currentPage = totalPages - 1;
+      if (currentPage < 0) currentPage = 0;
+      const pageRows = rows.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+
+      const arrow = (field) => {
+        if (field !== sortField) return '<span class="sort-arrow">⇅</span>';
+        return `<span class="sort-arrow active">${sortAsc ? '▲' : '▼'}</span>`;
+      };
+
+      const badgesHtml = (r) => (r.tags || []).map(t => `<span class="tag-badge ${isSpecialBadge(t) ? 'tag-special' : 'tag-flight'}">${t}</span>`).join('');
+
+      // Desktop: a normal sortable table. Mobile: a stacked card per
+      // player - same data, same page, just laid out to actually fit a
+      // phone screen instead of forcing a sideways scroll through six
+      // columns.
+      content.innerHTML = `
+        <div class="seat-table-wrap flat-card d-none d-md-block">
+          <table class="seat-table">
+            <thead>
+              <tr>
+                <th onclick="setSort('first_name')">First Name ${arrow('first_name')}</th>
+                <th onclick="setSort('last_name')">Surname ${arrow('last_name')}</th>
+                <th onclick="setSort('table_number')">Table ${arrow('table_number')}</th>
+                <th onclick="setSort('seat_number')">Seat ${arrow('seat_number')}</th>
+                <th onclick="setSort('chip_count')">Chips ${arrow('chip_count')}</th>
+                <th>Badges</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${pageRows.map(r => `
+                <tr>
+                  <td>${r.first_name || ''}</td>
+                  <td>${r.last_name || ''}</td>
+                  <td>${r.table_number ?? '-'}</td>
+                  <td>${r.seat_number ?? '-'}</td>
+                  <td>${r.chip_count != null ? Number(r.chip_count).toLocaleString() : '-'}</td>
+                  <td>${badgesHtml(r)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="d-md-none">
+          <div class="d-flex justify-content-between text-secondary small mb-2 px-1">
+            <span onclick="setSort('first_name')" style="cursor:pointer;">Name ${arrow('first_name')}</span>
+            <span onclick="setSort('table_number')" style="cursor:pointer;">Table-Seat ${arrow('table_number')}</span>
+            <span onclick="setSort('chip_count')" style="cursor:pointer;">Chips ${arrow('chip_count')}</span>
+          </div>
+          ${pageRows.map(r => `
+            <div class="seat-card">
+              <div class="d-flex justify-content-between align-items-baseline gap-2">
+                <span class="seat-card-name">${r.first_name || ''} ${r.last_name || ''}</span>
+                <span class="seat-card-meta text-center">Table ${r.table_number ?? '-'} · Seat ${r.seat_number ?? '-'}</span>
+                <span class="fw-bold text-end" style="color:var(--text-gold); white-space:nowrap;">
+                  ${r.chip_count != null ? Number(r.chip_count).toLocaleString() : '-'} <span class="seat-card-meta">chips</span>
+                </span>
+              </div>
+              ${(r.tags || []).length ? `<div class="seat-card-badges">${badgesHtml(r)}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      pagerEl.innerHTML = totalPages > 1 ? `
+        <button class="btn btn-outline-light btn-sm" onclick="gotoPage(${currentPage - 1})" ${currentPage === 0 ? 'disabled' : ''}>‹ Prev</button>
+        <span class="text-secondary small">Page ${currentPage + 1} of ${totalPages}</span>
+        <button class="btn btn-outline-light btn-sm" onclick="gotoPage(${currentPage + 1})" ${currentPage === totalPages - 1 ? 'disabled' : ''}>Next ›</button>
+      ` : '';
+    }
+
+    loadSeatDraw();
+    // This data is static once uploaded, unlike alt numbers - a slower
+    // poll than the live screens is appropriate, still catches the
+    // seat draw appearing automatically for anyone with the page
+    // already open and waiting.
+    setInterval(loadSeatDraw, 120000);
+  </script>
+</body>
+</html>
