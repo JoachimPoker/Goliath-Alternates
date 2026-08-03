@@ -361,20 +361,82 @@
     // --- OFF-SEASON COUNTDOWN ---
     // Shown only when there's genuinely nothing else to display (no
     // live events, nothing upcoming) and admin has it switched on -
-    // styled identically to a real "Calling up to #X" card, just
-    // counting down days to next year's Goliath instead of an alt
-    // number. Turns into the actual "Immediate Seating" green card the
-    // day it hits zero.
+    // styled identically to a real "Calling up to #X" card, so it reads
+    // as a genuine tournament status for a beat before the joke lands:
+    // Goliath itself is the alternate now, waiting on next year's
+    // number to be called. Turns into the actual "Immediate Seating"
+    // green card the day it hits zero.
     const COUNTDOWN_FLAVOR_LINES = [
-      "sleeps until someone argues about chip counts again",
+      "on the waiting list until someone argues about chip counts again",
       "days until the alt list becomes your entire personality again",
       "days until \"just one more level\" ruins your sleep schedule",
       "days of freedom before the ticker starts scrolling again",
       "days until you forget what your own bed looks like",
       "days until the first bad beat story of the festival",
       "days until someone asks where the reg desk is",
-      "days until this website is useful again"
+      "days until this website is useful again",
+      "days on the alternate list, patiently waiting for Goliath to be called up",
+      "days until the queue starts moving again",
+      "days until table 1 seat 1 becomes a real place again",
+      "days until the first \"shuffle up and deal\" of the year",
+      "days until someone loses their seat card for the fifth time",
+      "days until the reg desk queue becomes a personality trait",
+      "days until the chip runner earns their keep again",
+      "days until \"I'm just popping to the loo\" means missing a hand",
+      "days until the first all-in of next year's Goliath",
+      "days until the dealer button starts moving again",
+      "days until someone asks \"how many big blinds is that?\" unprompted",
+      "days until the first satellite winner regrets not cashing out",
+      "days until the tournament clock starts counting down instead of up",
+      "days until the first \"all-in, call\" of the new festival",
+      "days until someone brings a lucky charm to the felt",
+      "days until the leaderboard actually means something again",
+      "days until the first bustout rail-bird commentary",
+      "days until the alt list is the most refreshed page on the internet"
     ];
+
+    // A single interval driving the live clock, cleared and restarted
+    // any time the countdown card gets freshly rendered - without this,
+    // the normal 30s page refresh would pile up a fresh interval every
+    // time on top of old ones still ticking against detached elements.
+    let countdownTickerInterval = null;
+
+    function stopCountdownTicker() {
+      if (countdownTickerInterval) {
+        clearInterval(countdownTickerInterval);
+        countdownTickerInterval = null;
+      }
+    }
+
+    function startCountdownTicker(targetDate) {
+      stopCountdownTicker();
+
+      function updateClock() {
+        const el = document.getElementById('countdownClock');
+        if (!el) {
+          // This section was rebuilt/removed by a normal poll without
+          // going through stopCountdownTicker - stop rather than keep
+          // ticking against nothing.
+          stopCountdownTicker();
+          return;
+        }
+        const diff = targetDate - new Date();
+        if (diff <= 0) {
+          stopCountdownTicker();
+          loadHome(); // switch over to the actual "arrived" state
+          return;
+        }
+        const days = Math.floor(diff / 86400000);
+        const hours = Math.floor((diff % 86400000) / 3600000);
+        const minutes = Math.floor((diff % 3600000) / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        const pad = (n) => String(n).padStart(2, '0');
+        el.textContent = `${days}d ${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`;
+      }
+
+      updateClock();
+      countdownTickerInterval = setInterval(updateClock, 1000);
+    }
 
     function renderCountdownCard(daysLeft, year) {
       if (daysLeft <= 0) {
@@ -384,18 +446,27 @@
             <div class="border-top border-secondary pt-3 mt-2 text-center">
               <div class="display-5 fw-bold text-success" style="line-height:1.1">IMMEDIATE SEATING</div>
             </div>
-            <p class="text-center text-muted small mt-3 mb-0">GOLIATH ${year} IS HERE</p>
+            <p class="text-center mt-3 mb-0" style="color:#ccc;">GOLIATH ${year} IS HERE</p>
           </div>
         `;
       }
-      const line = COUNTDOWN_FLAVOR_LINES[daysLeft % COUNTDOWN_FLAVOR_LINES.length];
+      // Rotates by calendar day, not by days-remaining - so it's a
+      // different line each day you check regardless of the countdown
+      // value, rather than only changing as the number ticks down.
+      // Naturally repeats once every line's been through, which is
+      // fine - a poker festival happens every year too.
+      const startOfYear = new Date(new Date().getFullYear(), 0, 0);
+      const dayOfYear = Math.floor((new Date() - startOfYear) / 86400000);
+      const line = COUNTDOWN_FLAVOR_LINES[dayOfYear % COUNTDOWN_FLAVOR_LINES.length];
+      const dayWord = daysLeft === 1 ? line.replace('days', 'day') : line;
       return `
         <div class="flat-card">
           <div class="tourn-title">GOLIATH ${year}</div>
           <div class="border-top border-secondary pt-3 mt-2 text-center">
-            <div class="display-5 fw-bold text-warning" style="line-height:1.1">CALLING UP TO #${daysLeft}</div>
+            <div class="fw-bold text-warning" style="font-size:1.4rem;">CALLING ALTERNATES IN</div>
+            <div class="display-5 fw-bold text-warning" id="countdownClock" style="line-height:1.2; font-variant-numeric:tabular-nums;">...</div>
           </div>
-          <p class="text-center text-muted small mt-3 mb-0">${daysLeft} ${line}</p>
+          <p class="text-center mt-3 mb-0" style="color:#ccc;">${daysLeft} ${dayWord}</p>
         </div>
       `;
     }
@@ -409,7 +480,7 @@
       now.setHours(0, 0, 0, 0);
       const daysLeft = Math.ceil((target - now) / 86400000);
 
-      return renderCountdownCard(daysLeft, target.getFullYear());
+      return { html: renderCountdownCard(daysLeft, target.getFullYear()), targetDate: target, arrived: daysLeft <= 0 };
     }
 
     // --- 2b. UPCOMING SCHEDULE (shown when nothing is live) ---
@@ -428,16 +499,23 @@
         : allRows;
 
       if (allRows.length === 0) {
-        const countdownHtml = await renderOffSeasonCountdown();
-        container.innerHTML = countdownHtml || `
-          <div class="text-center py-5 text-secondary">
-            <h3 class="fw-bold" style="opacity:0.5;">NO ACTIVE EVENTS</h3>
-            <p>Please check back later.</p>
-          </div>
-        `;
+        const countdown = await renderOffSeasonCountdown();
+        if (countdown) {
+          container.innerHTML = countdown.html;
+          if (!countdown.arrived) startCountdownTicker(countdown.targetDate);
+        } else {
+          stopCountdownTicker(); // in case it was showing a moment ago and just got disabled
+          container.innerHTML = `
+            <div class="text-center py-5 text-secondary">
+              <h3 class="fw-bold" style="opacity:0.5;">NO ACTIVE EVENTS</h3>
+              <p>Please check back later.</p>
+            </div>
+          `;
+        }
         return;
       }
 
+      stopCountdownTicker(); // real schedule content is about to show instead
       if (rows.length === 0) {
         container.innerHTML = `<p class="text-center text-secondary py-3">No events match "${document.getElementById('scheduleSearch').value}".</p>`;
         return;
@@ -770,16 +848,6 @@
     logPageView();
 
     window.addEventListener('DOMContentLoaded', initMaps);
-
-    // --- SCREEN HEALTH CHECK ---
-    // A tiny "I'm alive" write on a steady timer, entirely invisible on
-    // this page - nothing shows here, the only place this status is
-    // ever displayed is the admin dashboard's Screen Health card.
-    function sendHeartbeat() {
-      _supabase.from('screen_heartbeats').update({ last_seen: new Date().toISOString() }).eq('screen', 'hub').then(() => {}).catch(() => {});
-    }
-    sendHeartbeat();
-    setInterval(sendHeartbeat, 30000);
 
     // Initial Loaders
     function refreshAll() {

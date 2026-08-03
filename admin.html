@@ -114,14 +114,6 @@
         </div>
       </div>
 
-      <div class="card p-3 mb-2 shadow-sm">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-          <h6 class="mb-0">🖥️ Screen Health</h6>
-          <span class="text-muted small">Each screen checks in every 30-60s</span>
-        </div>
-        <div class="row g-2" id="screenHealthWrap"></div>
-      </div>
-
       <hr class="section-divider">
 
       <!-- CALENDAR + MESSAGES: used a few times a day, still always
@@ -489,7 +481,6 @@
       loadStats();
       loadAlertsToggle();
       loadCountdownSettings();
-      loadScreenHealth();
       loadSeatDrawSummary();
 
       layoutCalendar((tours || []).some(t => t.is_active));
@@ -695,34 +686,6 @@
     // fine at festival scale. If this ever needs to scale much further,
     // a SQL count/group-by via an RPC would be the next step instead of
     // pulling every row.
-    // --- SCREEN HEALTH CHECK ---
-    const SCREEN_INFO = {
-      hub: { label: 'Website', expectedSeconds: 30 },
-      alt_desk: { label: 'Alt Desk', expectedSeconds: 60 },
-      reg_desk: { label: 'Reg Desk', expectedSeconds: 60 }
-    };
-
-    async function loadScreenHealth() {
-      const { data } = await _supabase.from('screen_heartbeats').select('*');
-      const rows = data || [];
-      const now = Date.now();
-
-      const wrap = document.getElementById('screenHealthWrap');
-      wrap.innerHTML = Object.keys(SCREEN_INFO).map(key => {
-        const info = SCREEN_INFO[key];
-        const row = rows.find(r => r.screen === key);
-        if (!row) {
-          return `<div class="col-md-4"><span class="text-muted">⚪ ${info.label}: no data yet</span></div>`;
-        }
-        const secondsAgo = Math.max(0, Math.round((now - new Date(row.last_seen).getTime()) / 1000));
-        // Some buffer beyond the expected check-in interval for normal
-        // network jitter, before actually calling it unhealthy.
-        const isHealthy = secondsAgo < info.expectedSeconds * 3;
-        const label = secondsAgo < 60 ? `${secondsAgo}s ago` : `${Math.round(secondsAgo / 60)}m ago`;
-        return `<div class="col-md-4"><span>${isHealthy ? '🟢' : '🔴'} ${info.label}: seen ${label}</span></div>`;
-      }).join('');
-    }
-
     async function loadStats() {
       const { data } = await _supabase.from('page_views').select('created_at, referrer, device_type');
       const rows = data || [];
@@ -1627,11 +1590,6 @@
     };
 
     checkUser();
-
-    // Screen health specifically stays current even if nobody's
-    // clicking around in admin - everything else refreshes when you
-    // take an action, but this is worth checking on its own schedule.
-    setInterval(loadScreenHealth, 15000);
   </script>
 </body>
 </html>

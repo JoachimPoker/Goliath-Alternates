@@ -404,15 +404,6 @@ async function loadTicker() {
     // Poll on a fixed interval regardless, so it can never drift stale
     // for long.
     setInterval(refreshDisplay, 60000);
-
-    // --- SCREEN HEALTH CHECK ---
-    // Entirely invisible on this screen - just a silent background
-    // write, checked by the admin dashboard only.
-    function sendHeartbeat() {
-      _supabase.from('screen_heartbeats').update({ last_seen: new Date().toISOString() }).eq('screen', 'alt_desk').then(() => {}).catch(() => {});
-    }
-    sendHeartbeat();
-    setInterval(sendHeartbeat, 60000);
   </script>
 </body>
 </html>
